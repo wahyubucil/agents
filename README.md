@@ -8,6 +8,10 @@ Repository for managing agent-related configurations, custom agents, and skills.
 - **Custom Agents** - Agent configurations and implementations
 - **Agent Configurations** - Setup files and hooks for agent behavior
 
+## Plugins
+
+- **[code-review](./plugins/code-review/)** — project-aware code review with per-section parallel agents and pending GitHub reviews.
+
 ## Purpose
 
 This repository serves as a centralized location for:
