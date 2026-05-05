@@ -81,6 +81,20 @@ Parse the YAML mentally. The available section list is the union of:
 
 The frontmatter is the source of truth — do not invent sections that aren't there. If the user wants a section that doesn't exist, follow the `<new>` flow below.
 
+**Consistency check (structural).** Before proposing a target section, sanity-check the artifact's frontmatter and body structure:
+
+1. Read the body (everything after the closing `---` of the frontmatter) and enumerate every `## ` heading. Slugify each heading (lowercase, whitespace runs → `_`, drop non-`[a-z0-9_]`).
+2. Confirm every slug under the frontmatter `sections:` map has a body heading whose slugified form matches it, and every body `## ` heading slugifies to a frontmatter slug.
+
+If the artifact is internally inconsistent (a frontmatter slug has no matching body heading, or a body heading has no matching frontmatter slug), print EXACTLY:
+
+```
+The best-practices file is internally inconsistent: <slug> is <missing in frontmatter | missing in body>.
+Re-run /init (replace mode) or fix manually before continuing.
+```
+
+And exit. Do not proceed with mutation.
+
 Based on the rule text + Why, propose one section as the target. Use this rough mapping (your judgment overrides any single keyword):
 
 - `security` — auth, secrets, injection, crypto, trust boundaries, input validation for adversarial input.
@@ -118,7 +132,7 @@ Prompt EXACTLY:
 New section name?
 ```
 
-Take the user's reply (whitespace-trimmed) as the display title. Slugify it:
+Take the user's reply (whitespace-trimmed) as the display title. Slugify it to produce the frontmatter key:
 
 - Lowercase the whole string.
 - Replace any whitespace runs with a single underscore (`_`).
@@ -143,22 +157,51 @@ Once the slug is accepted, you must update the artifact in two places **before**
 
    Insert it at the end of the `sections:` map (after the last existing section, before any blank line that separates `sections:` from `min_confidence:`).
 
-2. **Body:** append a new heading at the bottom of the file (after the last `## ` section):
+2. **Body:** append a new heading at the bottom of the file (after the last `## ` section). Use the user's whitespace-trimmed reply verbatim as the display title — do **not** reconstruct it from the slug:
 
    ```markdown
    ## <Title>
    <!-- Add inline rules here, or rely on refs above -->
    ```
 
-Use `Edit` for both. After this, the new slug is the target section and the placeholder comment is what's currently under it (so the rule will replace the placeholder per the rules in "Confirm and apply").
+Use `Edit` for both. The body heading you just wrote is now the canonical display title for this slug — later steps will rediscover it by scanning the body, not by reconstructing from the slug. After this, the new slug is the target section and the placeholder comment is what's currently under it (so the rule will replace the placeholder per the rules in "Confirm and apply").
+
+## Consistency check
+
+Before any conflict scan or mutation, verify the artifact is internally consistent for the target slug:
+
+1. The target section's slug exists in the frontmatter `sections:` map (or you just added it via the `<new>` flow).
+2. The body contains a `## <Heading>` whose slugified form equals the target slug. To slugify a heading: take the text after `## `, lowercase it, replace whitespace runs with a single underscore (`_`), drop any character that is not `[a-z0-9_]`.
+
+If either check fails, print EXACTLY:
+
+```
+The best-practices file is internally inconsistent: <slug> is <missing in frontmatter | missing in body>.
+Re-run /init (replace mode) or fix manually before continuing.
+```
+
+And exit. Do not proceed with mutation.
 
 ## Conflict scan
 
-Read the artifact and locate the body region under the target section heading (`## <Title>` derived from the slug — defaults map: `security`→`Security`, `bugs`→`Bugs`, `performance`→`Performance`, `simplicity`→`Simplicity`, `testing`→`Testing`, `error_handling`→`Error Handling`, `conventions`→`Conventions`; for custom sections use the title recorded when the section was created). The body region runs from the line after the heading to the line before the next `## ` heading or EOF.
+Locate the body region for the target section by **scanning the body itself**, not by reconstructing the title from the slug:
+
+1. Read the artifact body (everything after the closing `---` of the frontmatter).
+2. Enumerate every line that starts with `## ` (exactly two hashes and a space).
+3. For each such heading, slugify it as defined in the consistency check (lowercase, whitespace runs → `_`, drop non-`[a-z0-9_]`).
+4. Pick the heading whose slugified form equals the target slug. That exact heading line is the anchor for the body region.
+
+The body region runs from the line after the matched heading to the line before the next `## ` heading or EOF. The body is the source of truth for headings, so do not rely on a fixed slug→title map (e.g. `security`→`Security`); always discover the heading by slug-matching.
+
+If no body heading slugifies to the target slug, the artifact is inconsistent — handle per the consistency check above (print the inconsistency message and exit).
 
 Identify existing rule bullets — top-level lines starting with `- **`. Ignore the placeholder comment (`<!-- Add inline rules here, or rely on refs above -->`) and any sub-bullets (`  - **Why:**`, `  - **Example:**`).
 
-For each existing rule bullet, compare semantically against the new rule (use your judgment based on the rule text + Why; do not rely on a fixed metric). Surface up to **three** closest matches.
+For each existing rule bullet, compare semantically against the new rule (use your judgment based on the rule text + Why; do not rely on a fixed metric).
+
+**Similarity anchor.** Surface a match if the existing rule covers the same **imperative subject** as the new rule — i.e. they share the primary verb + the primary noun phrase. Examples: "always validate input at trust boundaries" and "check user input at API entry points" are matches (verb: validate/check, noun phrase: input at boundaries). "always check for null" and "always validate input" are not matches (different noun phrases). Wording differences alone don't count; the underlying rule subject must overlap.
+
+Surface up to **three** closest matches.
 
 If at least one similar rule is found, print EXACTLY:
 
@@ -219,7 +262,7 @@ Parse the reply (case-insensitive single character; empty defaults to `n`):
   Re-prompt for the chosen field(s), update your in-memory state, then re-render the diff and re-ask `Apply? (y)es / (e)dit / (n)o`. Loop until the user picks `y` or `n`.
 - `n`: bail out without writing. Print `Aborted — no change.` and jump to the loop step.
 
-On `y`, use `Edit` to apply the change to `.claude/code-review/best-practices.md`. The semantics depend on the conflict-scan outcome:
+On `y`, use `Edit` to apply the change to `.claude/code-review/best-practices.md`. Anchor the body region the same way as in the conflict scan: scan the body for `## ` headings, slugify each, and use the heading whose slugified form equals the target slug as the anchor — do not reconstruct the title from the slug. The semantics depend on the conflict-scan outcome:
 
 - **Replace** or **merge**: locate the matched bullet (and its `**Why:**`/`**Example:**` sub-bullets, which are the indented lines immediately following) and replace that whole bullet block with the new bullet block.
 - **Keep both / no conflict (append)**: insert the new bullet at the end of the section's body region — i.e. immediately before the next `## ` heading, or before EOF if the target section is the last section.
