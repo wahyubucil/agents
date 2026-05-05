@@ -1,0 +1,5 @@
+upstream: agynio/gh-pr-review
+commit: d2c86f61c5709c567e8487ba82f04112a456c221
+commit_date: 2026-04-13
+fetched_at: 2026-05-05
+note: pinned to a commit on main; latest release tag v1.6.2 predates SKILL.md and LICENSE
