@@ -1,0 +1,20 @@
+{
+  "name": "wahyubucil-agents",
+  "description": "Personal agents, skills, and plugins for Claude Code",
+  "owner": {
+    "name": "Wahyu Budi Saputra",
+    "email": "wahyubucil@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "code-review",
+      "description": "Project-aware code review with per-section parallel agents and pending GitHub reviews",
+      "version": "0.1.0",
+      "source": "./plugins/code-review",
+      "author": {
+        "name": "Wahyu Budi Saputra",
+        "email": "wahyubucil@gmail.com"
+      }
+    }
+  ]
+}
