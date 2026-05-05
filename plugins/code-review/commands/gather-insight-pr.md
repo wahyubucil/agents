@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh pr-review:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh repo view:*), Read, Edit, Write, Agent
+allowed-tools: Bash(gh pr-review:*), Bash(gh repo view:*), Read, Edit, Write, Agent
 description: Mine human PR review comments and append generalizable rules to the best-practices file
 disable-model-invocation: false
 ---
@@ -71,7 +71,7 @@ Carry `<owner>/<repo>` and `<pr-number>` into the next step.
 Use the bundled `gh-pr-review` skill — single call:
 
 ```bash
-gh pr-review review view <pr-number> -R <owner>/<repo> --include-comment-node-id
+gh pr-review review view -R <owner>/<repo> --pr <pr-number>
 ```
 
 The output is structured JSON with reviews, top-level review summary bodies, inline thread comments, and reply chains. Capture the JSON. Parse with `jq` or pipe directly into your reasoning.
@@ -91,9 +91,17 @@ Build a single working list of candidate comments. For each candidate, capture: 
 
 For each candidate, drop the comment if **any** of the following match its `author_login` (case-insensitive):
 
-- The login ends in `[bot]`.
-- The login contains any of the built-in bot substrings: `coderabbit`, `sourcery`, `codiumai`, `codeball`, `codeguru`, `github-actions`, `dependabot`, `renovate`.
-- The login appears in the project's `skip_review_authors` list (parsed from frontmatter; default empty).
+- The login ends in `[bot]`. This is the future-proof rule — GitHub names every GitHub App with a `[bot]` suffix, so this catches all of them (including new bot variants we haven't enumerated below).
+- The login matches one of the exact-known bot logins below via **full-string equality** (case-insensitive). Substring matching is forbidden here — `dependabot-watcher`, `mr-codeguru`, and `coderabbit-fan` are real human handles that must survive this filter. The exact-known bot logins are:
+  - `coderabbitai`
+  - `sourcery-ai`
+  - `codiumai`
+  - `codeball`
+  - `codeguru-reviewer`
+  - `github-actions[bot]`
+  - `dependabot[bot]`
+  - `renovate[bot]`
+- The login appears in the project's `skip_review_authors` list (parsed from frontmatter; default empty). Match this list with full-string equality (case-insensitive) — same rule as above; no substring matching.
 
 **Do not drop self.** The user often reviews other people's PRs and those comments are first-class rule sources. Self-authored comments must be preserved through this filter — never exclude the self login from the candidate set.
 
@@ -177,7 +185,7 @@ Bucket each extraction:
 Print EXACTLY:
 
 ```
-Mined N comments from M reviewers (excluding bots and self-review-skip-list).
+Mined N comments from M reviewers (excluding bots and skip_review_authors).
 Found: X new, Y refining, Z duplicates (skipped).
 ```
 
@@ -231,8 +239,10 @@ For each rule in the combined `new` + `refines-existing` list, in the order they
    - `e` (edit): enter inline-edit mode. Ask which field the user wants to revise:
 
      ```
-     Edit which? (r)ule / (w)hy / (e)vidence / (a)ll
+     Edit which? (r)ule / (w)hy / (a)ll
      ```
+
+     The auto-generated `evidence` string (`Reviewer @<login> on <path>:<line> in PR #<n>`) is **not** editable here — it is the audit trail provenance and rewriting it would falsify the source attribution and break parsing. If the user wants to add their own context (e.g. a snippet of the reviewer's comment), they can edit the artifact directly afterward.
 
      Re-prompt for the chosen field(s), update the in-memory state, then re-render the rule block and re-ask `(y)es / (e)dit / (n)o`. Loop until the user picks `y` or `n`.
    - `n` (no): skip this rule. Do not write anything.
@@ -302,5 +312,5 @@ These constraints are non-negotiable. Re-read them before each step:
 - **Never write a rule without a Why.** Both `rule` and `why` must be derived from the comment's actual content. Drop the extraction if either is missing.
 - **Never silently rewrite existing rules.** `refines-existing` requires user confirmation in the per-rule walkthrough, or blanket `accept all` consent. The dedup step alone never edits the artifact.
 - **Preserve the placeholder comment** (`<!-- Add inline rules here, or rely on refs above -->`) in all sections you are not modifying. Only the section a rule lands in loses its placeholder, and only if it had nothing else.
-- **Use the bundled `gh-pr-review` skill.** Every `gh pr-review` invocation must follow the schema documented in the skill — review IDs `PRR_…`, thread IDs `PRRT_…`, comment node IDs `PRRC_…` (when needed via `--include-comment-node-id`). Do not re-document its flags inline; lean on the skill.
-- **Use only the declared tools:** `Bash` (scoped to `gh pr-review:*`, `gh pr view:*`, `gh api:*`, `gh repo view:*`), `Read`, `Edit`, `Write`, `Agent`. Do not request anything else.
+- **Use the bundled `gh-pr-review` skill.** Every `gh pr-review` invocation must follow the schema documented in the skill — review IDs `PRR_…`, thread IDs `PRRT_…`. Do not re-document its flags inline; lean on the skill.
+- **Use only the declared tools:** `Bash` (scoped to `gh pr-review:*`, `gh repo view:*`), `Read`, `Edit`, `Write`, `Agent`. Do not request anything else.
