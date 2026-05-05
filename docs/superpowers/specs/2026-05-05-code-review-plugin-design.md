@@ -29,7 +29,7 @@ Reviews are powered by the [`agynio/gh-pr-review`](https://github.com/agynio/gh-
 ## Non-goals
 
 - Public marketplace distribution. Personal plugin in the user's `agents/` repo for now.
-- Bundling external skills. Skills referenced by the artifact (`code-simplifier`, etc.) stay where they live; the plugin only references them.
+- Bundling **domain** skills. Skills referenced by the artifact (`code-simplifier`, `riverpod-best-practices`, etc.) stay where they live and are referenced by the artifact. The plugin **does** vendor a **dependency** skill (`gh-pr-review`) — see Plugin layout below.
 - Build/typecheck/lint duplication. CI handles those; review agents are explicitly told not to.
 - Replacing CLAUDE.md. The best-practices artifact lives alongside CLAUDE.md and serves a narrower purpose.
 
@@ -47,12 +47,23 @@ agents/
         gather-insight-pr.md
         review.md
         review-discussion.md
+      skills/
+        gh-pr-review/
+          SKILL.md          # vendored from agynio/gh-pr-review (MIT)
+          LICENSE
+          VERSION           # records upstream commit SHA / tag
       templates/
         best-practices.template.md
       README.md
 ```
 
-`agents/` becomes a local marketplace; the plugin is installed via `/plugin install ./plugins/code-review` from a local marketplace registration. No `skills/` directory inside the plugin initially — internal helpers can be added later if logic gets reused across commands.
+`agents/` becomes a local marketplace; the plugin is installed via `/plugin install ./plugins/code-review` from a local marketplace registration.
+
+**Skill bundling policy:**
+
+- **Domain skills** (project rules like `code-simplifier`) — not bundled. Referenced by the artifact's `refs:` and resolved at review time from the user's existing skill paths.
+- **Dependency skills** (`gh-pr-review`) — **bundled as a vendored copy** under `plugins/code-review/skills/gh-pr-review/`. The plugin has a hard dep on the `gh-pr-review` CLI; the skill teaches Claude how to use it (JSON schemas, ID formats, common workflows). Vendoring keeps command prompts terse — they can lean on the auto-loaded skill instead of re-documenting CLI flags. Source: [agynio/gh-pr-review](https://github.com/agynio/gh-pr-review) (MIT). Re-vendoring is manual when upstream meaningfully changes; `VERSION` tracks the upstream commit SHA or release tag pinned.
+- **Plugin-internal helper skills** — not bundled initially. If multiple commands end up duplicating the same logic (rule extraction, frontmatter parsing, ref resolution), promote to skills under `plugins/code-review/skills/` later.
 
 ## The artifact: `best-practices.md`
 
@@ -265,6 +276,8 @@ These are *context*, not sections. Any section agent may use them to ground a fi
 
 **Invocation:** all three forms supported — current branch (auto-detect via `gh pr view --json number`), PR number, or PR URL.
 
+**Skill leverage:** the bundled `gh-pr-review` skill is auto-loaded with the plugin. Command prompts assume Claude knows the CLI's commands, JSON schemas, and ID formats (`PRR_…`, `PRRT_…`, `PRRC_…`) from the skill — they don't re-document them.
+
 **Flow:**
 
 1. **Resolve PR.** Bail with clear error if no PR is associated with current branch.
@@ -309,6 +322,8 @@ These are *context*, not sections. Any section agent may use them to ground a fi
 **Purpose:** answer a specific question about a PR, lazily loading only what's needed. Optionally roll the answer into a pending review if the answer surfaces concrete actionable issues.
 
 **Distinct from `/review`:** narrow Q&A rather than comprehensive scan. Sequential single answering agent rather than parallel section agents. No eligibility checks. No delta logic. Free to pull from skills not in the artifact, MCP tools, web, and arbitrary files.
+
+**Skill leverage:** same as `/review` — the bundled `gh-pr-review` skill is auto-loaded; command prompts rely on it for any CLI invocation patterns when drafting a pending review (step 6 below).
 
 **Examples:**
 
@@ -384,7 +399,11 @@ These are *context*, not sections. Any section agent may use them to ground a fi
 ## Implementation notes
 
 - Each command file is a Claude Code slash-command markdown with frontmatter (`allowed-tools`, `description`). The bulk of the prompt encodes the flow.
-- `gh pr-review` is a hard dependency. The plugin should detect missing extension (`gh extension list | grep pr-review`) on first use and print the install command: `gh extension install agynio/gh-pr-review`.
+- `gh pr-review` (the CLI) is a hard dependency. The plugin should detect missing extension (`gh extension list | grep pr-review`) on first use and print the install command: `gh extension install agynio/gh-pr-review`.
+- The `gh-pr-review` skill is vendored under `plugins/code-review/skills/gh-pr-review/`. Vendoring procedure for re-syncing on upstream changes:
+  1. Pin a release tag or commit SHA (record in `VERSION` file alongside `SKILL.md`).
+  2. Fetch `SKILL.md` and `LICENSE` from `agynio/gh-pr-review` at that ref.
+  3. Commit alongside any related plugin changes. The plugin's README install step lists the CLI install command separately — the bundled skill alone is not enough.
 - YAML frontmatter parsing: keep it simple — use `yq` (CLI) if available, otherwise fall back to a manual front-matter regex split since the schema is small and stable.
 - The `inherit` model in section frontmatter means "use whatever model the parent agent is running" — at command time, this is the model of the command-invoking session, passed through to spawned subagents unless overridden.
 - Skill resolution must support both project-local (`.claude/skills/`, `.agents/skills/`) and user-global (`~/.claude/skills/`) paths. Use the same precedence Claude Code itself uses.
