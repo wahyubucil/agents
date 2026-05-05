@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh pr-review:*), Bash(gh repo view:*), Read, Edit, Write, Agent
+allowed-tools: Bash(gh pr-review:*), Bash(gh repo:*), Read, Edit, Write, Agent
 description: Mine human PR review comments and append generalizable rules to the best-practices file
 disable-model-invocation: false
 ---
@@ -51,6 +51,14 @@ Parse the YAML mentally. Extract:
 
 - The full section list — the union of the seven defaults (`security`, `bugs`, `performance`, `simplicity`, `testing`, `error_handling`, `conventions`) plus any additional slugs under the frontmatter `sections:` map. The frontmatter is the source of truth for the section list — do not invent slugs that aren't there.
 - `skip_review_authors`: a list of reviewer logins to drop in addition to the bot list. If the key is absent, default to an empty list.
+
+## Pre-flight: verify `gh pr-review` extension is installed
+
+```bash
+gh extension list 2>/dev/null | grep -q pr-review || { echo 'Missing dependency: gh extension install agynio/gh-pr-review'; exit 1; }
+```
+
+Bail with the install hint if missing.
 
 ## Resolve repo
 
@@ -313,4 +321,4 @@ These constraints are non-negotiable. Re-read them before each step:
 - **Never silently rewrite existing rules.** `refines-existing` requires user confirmation in the per-rule walkthrough, or blanket `accept all` consent. The dedup step alone never edits the artifact.
 - **Preserve the placeholder comment** (`<!-- Add inline rules here, or rely on refs above -->`) in all sections you are not modifying. Only the section a rule lands in loses its placeholder, and only if it had nothing else.
 - **Use the bundled `gh-pr-review` skill.** Every `gh pr-review` invocation must follow the schema documented in the skill — review IDs `PRR_…`, thread IDs `PRRT_…`. Do not re-document its flags inline; lean on the skill.
-- **Use only the declared tools:** `Bash` (scoped to `gh pr-review:*`, `gh repo view:*`), `Read`, `Edit`, `Write`, `Agent`. Do not request anything else.
+- **Use only the declared tools:** `Bash` (scoped to `gh pr-review:*`, `gh repo:*`), `Read`, `Edit`, `Write`, `Agent`. Do not request anything else.

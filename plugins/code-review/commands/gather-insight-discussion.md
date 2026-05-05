@@ -81,21 +81,20 @@ Parse the YAML mentally. The available section list is the union of:
 
 The frontmatter is the source of truth — do not invent sections that aren't there. If the user wants a section that doesn't exist, follow the `<new>` flow below.
 
-**Consistency check (structural).** Before proposing a target section, sanity-check the artifact's frontmatter and body structure:
-
-1. Read the body (everything after the closing `---` of the frontmatter) and enumerate every `## ` heading. Slugify each heading (lowercase, whitespace runs → `_`, drop non-`[a-z0-9_]`).
-2. Confirm every slug under the frontmatter `sections:` map has a body heading whose slugified form matches it, and every body `## ` heading slugifies to a frontmatter slug.
-
-If the artifact is internally inconsistent (a frontmatter slug has no matching body heading, or a body heading has no matching frontmatter slug), print EXACTLY:
+**Consistency check (structural).** Before walking sections, verify every frontmatter slug has a matching `## <Heading>` in the body. For each slug in the artifact's frontmatter `sections:` map: scan the body for `## ` headings, slugify each (lowercase, whitespace runs → `_`, drop non-`[a-z0-9_]`), and confirm at least one matches the slug. If a slug has no matching body heading, print:
 
 ```
-The best-practices file is internally inconsistent: <slug> is <missing in frontmatter | missing in body>.
+The best-practices file is internally inconsistent: <slug> is missing in body.
 Re-run /init (replace mode) or fix manually before continuing.
 ```
 
-And exit. Do not proceed with mutation.
+And exit. This check is **one-directional**: do NOT verify the reverse direction — body headings may include doc-only sections (like `## Rule format`) that don't appear in frontmatter.
 
-Based on the rule text + Why, propose one section as the target. Use this rough mapping (your judgment overrides any single keyword):
+Based on the rule text + Why, propose one section as the target.
+
+If the artifact contains custom sections (any frontmatter slugs not in the seven defaults), include them in your proposal consideration. For each custom section, read its `## <Heading>` in the body and any existing rules to infer its scope, then propose accordingly. Custom sections are first-class candidates, not fallbacks.
+
+For the seven defaults, use this rough mapping (your judgment overrides any single keyword):
 
 - `security` — auth, secrets, injection, crypto, trust boundaries, input validation for adversarial input.
 - `bugs` — null/undefined, off-by-one, race conditions, state correctness.
