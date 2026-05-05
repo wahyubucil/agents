@@ -8,12 +8,13 @@
 
 A personal Claude Code plugin that captures project-specific code-review knowledge in a single committed artifact, then applies it to pull requests via parallel section-aware agents. The plugin lives inside the existing `wahyubucil/agents` repo as a sibling to the `skills/` directory.
 
-Four slash commands form a closed loop:
+Five slash commands form a closed loop:
 
 1. **`/init`** — scaffold the per-project best-practices file
 2. **`/gather-insight-discussion`** — distill rules from a conversation, append to the file
 3. **`/gather-insight-pr <pr>`** — mine human reviewer feedback from a past PR, append new rules
-4. **`/review [pr]`** — run the review using parallel per-section agents, post a pending GitHub review with inline comments
+4. **`/review [pr]`** — run the full review using parallel per-section agents, post a pending GitHub review with inline comments
+5. **`/review-discussion [pr] <question>`** — focused Q&A over a PR with lazy loading of diff/sections/refs and access to ad-hoc skills, MCP tools, and web; optionally roll the answer into a pending review
 
 Reviews are powered by the [`agynio/gh-pr-review`](https://github.com/agynio/gh-pr-review) `gh` CLI extension (not GitHub MCP), which provides structured review viewing and pending-review GraphQL helpers.
 
@@ -45,6 +46,7 @@ agents/
         gather-insight-discussion.md
         gather-insight-pr.md
         review.md
+        review-discussion.md
       templates/
         best-practices.template.md
       README.md
@@ -301,6 +303,65 @@ These are *context*, not sections. Any section agent may use them to ground a fi
     Or submit now? (y/n)
     ```
     If user picks `y`, ask which event, then run the submit command. If `n`, exit.
+
+### `/review-discussion [pr] <question>`
+
+**Purpose:** answer a specific question about a PR, lazily loading only what's needed. Optionally roll the answer into a pending review if the answer surfaces concrete actionable issues.
+
+**Distinct from `/review`:** narrow Q&A rather than comprehensive scan. Sequential single answering agent rather than parallel section agents. No eligibility checks. No delta logic. Free to pull from skills not in the artifact, MCP tools, web, and arbitrary files.
+
+**Examples:**
+
+- "Is the naming on `UserService` in `src/users.ts` good?"
+- "Does this PR follow OWASP at the auth boundary?"
+- "Is the test coverage on the new module sufficient — compare with `agents/skills/riverpod-best-practices`."
+- "Look at the comments on PR #45 we discussed — does this PR address them?"
+
+**Invocation:**
+
+- `/review-discussion <question>` — current branch's PR
+- `/review-discussion <pr> <question>` — explicit PR number or URL
+- Question is required; PR auto-detects from current branch otherwise.
+
+**Flow:**
+
+1. **Resolve PR.** Bail with usage if neither explicit PR nor a current-branch PR exists.
+2. **No eligibility checks.** Closed/merged/draft/already-reviewed-by-self all proceed. The user is asking a specific question; PR state is not a gate.
+3. **Lazy-load planner (Haiku).** Inputs: the question text, the artifact frontmatter (refs and section names only, no bodies), and `gh pr view --json files` (file list, no contents). Returns:
+   ```yaml
+   diff_scope: full | files: ["src/users.ts"] | hunks: ["src/users.ts:40-80"]
+   sections_to_load: [conventions, simplicity]
+   refs_to_load: ["AGENTS.md", "skill:code-simplifier"]
+   extra_resources:
+     skills: ["riverpod-best-practices"]   # mentioned in question, not in refs
+     mcp_tools: []
+     web: false
+     files: ["src/auth.ts"]                # specific paths cited in question
+   ```
+4. **Targeted loads.** Only the planner-listed files/hunks/sections/refs are loaded. Diff is fetched scoped (`gh pr diff <pr> -- <files>` or filtered to hunks). Section bodies and resolved refs are loaded. Extra resources (off-artifact skills, MCP tools, files) are loaded as listed.
+5. **Answering agent (sequential, model `inherit` by default).** Single agent receives the question, the loaded scope, and a system instruction that includes the false-positive baseline (so it does not over-flag). Agent answers in prose, citing specific lines/files using the full-SHA permalink format when grounding in PR code. Agent may call WebFetch / WebSearch / MCP tools / Read / Grep / Bash as needed.
+6. **Post-answer disposition.** After the answer is printed, if the agent surfaced concrete actionable issues (its own judgment), prompt:
+   ```
+   I'd suggest <N> inline comments based on this. Draft a pending review? (y/n)
+   ```
+   On `y`, re-use the `/review` posting machinery (steps 11–14: open pending, add inline comments anchored to specific lines, do not submit). The user can also pre-empt this by including instructions in the question itself ("…and draft a pending review for what you find").
+7. **Failure modes:**
+   - PR doesn't exist → bail with usage hint.
+   - PR has no diff (empty PR) → answer based on PR metadata only; warn.
+   - Best-practices artifact missing → answer using ad-hoc reasoning plus any refs/skills the user mentioned in the question; warn that artifact-grounded reasoning is unavailable.
+
+**Comparison: `/review` vs. `/review-discussion`:**
+
+| Aspect | `/review` | `/review-discussion` |
+|--------|-----------|---------------------|
+| Trigger | "review this PR" | "answer this question" |
+| Scope decision | All sections, full diff | Planner picks sections + diff scope from question |
+| Eligibility | Strict (closed/merged/draft/already-reviewed) | None |
+| Delta logic | Yes (only new commits since last review) | No |
+| Architecture | Parallel section agents | Sequential answering agent |
+| Default action | Open pending review with inline comments | Print answer; ask before drafting any review |
+| External sources | Refs only | Refs + ad-hoc skills / MCP / web / files |
+| Default model | Per-section frontmatter | `inherit` |
 
 ## UX defaults (locked in)
 
