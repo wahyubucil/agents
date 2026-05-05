@@ -136,7 +136,7 @@ awk '/^---$/{i++; next} i==1' .claude/code-review/best-practices.md
 Extract:
 
 - `sections:` — a map from slug to `{refs: [...], model: <inherit|sonnet|opus|haiku>}`.
-- `min_confidence:` — integer (default 80 if absent).
+- `min_confidence:` — integer (default 80 if absent). If `min_confidence` is missing OR is not a non-negative integer in `[0, 100]` (e.g. a typo like `high`, or a string like `"80"`), warn `min_confidence is missing or invalid; defaulting to 80` and use 80.
 - `skip_authors:` — list of logins (default to the bot list if absent).
 
 The seven default slugs (`security`, `bugs`, `performance`, `simplicity`, `testing`, `error_handling`, `conventions`) plus any custom slugs in the map form the full section list.
@@ -191,15 +191,22 @@ Fetch once, share to all section agents in step 7. Scope every fetch to the in-s
    ```
    Capture the matching lines verbatim. These are hints about intent that section agents may use to ground or reject findings.
 
-4. **Past PR comments on touched files.** For each in-scope file path, derive a short keyword (the file name without extension is fine), then run:
+4. **Past PR comments on touched files.** For each in-scope file path, prefer the `path:` qualifier first; fall back to a keyword (the file name without extension) only if zero hits.
+
+   GitHub PR search supports `path:` to scope to PRs that touched a given file path. Prefer this over keyword search to avoid noisy matches on common filenames.
+
    ```bash
-   gh pr list --state merged --search "<file-path-keywords>" --limit 5 --json number,title,files
+   # Try path-qualified search first:
+   gh pr list --state merged --search "path:<file-path>" --limit 5 --json number,title,files
+
+   # If empty, fall back to a keyword (filename without extension), but warn that results may be noisy:
+   gh pr list --state merged --search "<keyword>" --limit 5 --json number,title,files
    ```
    For each of the top 5 matching merged PRs, fetch its review comments via:
    ```bash
-   gh pr-review review view -R <owner>/<repo> --pr <n> --not_outdated --tail 1
+   gh pr-review review view -R <owner>/<repo> --pr <past-pr-number> --not_outdated --tail 3
    ```
-   Concatenate inline comments. **Cap the total at ~50 comments** across all touched files to keep the agents' context manageable; drop the oldest if you exceed the cap.
+   We want the original review comment plus a small reply window for context — not just the latest reply. Concatenate inline comments. **Cap the total at ~50 comments** across all touched files to keep the agents' context manageable; drop the oldest if you exceed the cap.
 
 Bundle everything into a single shared-context blob: `{diff, blame_per_hunk, in_code_comments, past_pr_comments}`. This blob is passed verbatim to every section agent in step 7.
 
@@ -321,13 +328,7 @@ Drop every merged finding whose `confidence` is **strictly less than** `min_conf
 
 **Never lower the threshold below the artifact's `min_confidence` value.** This is a hard rule; the user's threshold is authoritative.
 
-If zero findings survive, you still proceed to step 11 (open a pending review with zero comments) so the user gets a clean "no issues found" experience with the summary body explaining the run; alternatively, if you prefer not to open an empty review, print:
-
-```
-No findings at confidence ≥ <threshold>. No pending review created.
-```
-
-and exit cleanly. Either behavior is acceptable; pick the empty-review path when the user has clearly invoked `/review` and would expect a "PR was reviewed" trace on GitHub, otherwise pick the no-op path.
+If 0 findings remain after filtering: still proceed with steps 11-14. Open the pending review, add no inline comments, and write a summary body that states `Reviewed sections: ...; no high-confidence findings.` This gives the user a posting trace and lets them submit/discard the empty review on GitHub. The Submit-now? prompt remains.
 
 ## Post-eligibility
 
@@ -340,6 +341,14 @@ PR state changed during review (<reason>). Aborting post; no pending review crea
 This is the race guard — without it a long-running review may post comments to a PR that no longer accepts them. If the second check returns `PROCEED`, continue.
 
 ## Pending review
+
+**Pre-step 11: Verify `gh pr-review` extension is installed.**
+
+```bash
+gh extension list 2>/dev/null | grep -q pr-review || { echo 'Missing dependency: gh extension install agynio/gh-pr-review'; exit 1; }
+```
+
+If missing, print the install command and exit. The earlier `gh pr-review review view` calls (steps 6, 10) would have already failed if it were missing — this is a defense-in-depth check before the harder-to-reverse `--start` operation.
 
 Open the pending review:
 
@@ -354,6 +363,8 @@ Capture the returned review ID. It will look like `PRR_…` — that is the lite
 If the start command fails (network error, permissions), surface the error verbatim to the user and exit. Do not retry blindly; the user can re-run `/review`.
 
 ## Add inline comments
+
+Note: the bundled `gh-pr-review` skill snapshot (v1.6.2 era) doesn't document `--start-line`, but the actual CLI supports it for multi-line ranges. Run `gh pr-review review --add-comment --help` to confirm the flag is available on the installed version.
 
 For each surviving finding, add an inline comment to the pending review:
 
