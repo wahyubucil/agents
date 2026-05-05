@@ -143,25 +143,26 @@ git -C /Users/wahyubucil/projects/github.com/wahyubucil/agents commit -m "feat(c
 - Create: `plugins/code-review/skills/gh-pr-review/LICENSE`
 - Create: `plugins/code-review/skills/gh-pr-review/VERSION`
 
-**Pin:** upstream tag `v1.6.2` (commit SHA `5f103ba9522a8bfdcd3c707a0cbd76b5ad009c16`).
+**Pin:** upstream commit `d2c86f61c5709c567e8487ba82f04112a456c221` on `main` (dated 2026-04-13). The latest tagged release `v1.6.2` (2025-12-08) predates both `SKILL.md` (added 2026-01-28) and `LICENSE` (added 2026-04-12), so we pin to a commit on `main` until upstream cuts a tag covering both. Re-vendor by changing this commit SHA and re-running the fetch.
 
 ### Task 1.1: Vendor the skill
 
-- [ ] **Step 1: Fetch SKILL.md at the pinned ref and write locally**
+- [ ] **Step 1: Fetch SKILL.md at the pinned commit and write locally**
 
-Run:
+Run (the URL must be quoted because of the `?` glob char in zsh):
 ```bash
-gh api repos/agynio/gh-pr-review/contents/SKILL.md?ref=v1.6.2 --jq '.content' \
+gh api 'repos/agynio/gh-pr-review/contents/SKILL.md?ref=d2c86f61c5709c567e8487ba82f04112a456c221' --jq '.content' \
   | base64 -d > /Users/wahyubucil/projects/github.com/wahyubucil/agents/plugins/code-review/skills/gh-pr-review/SKILL.md
 ```
+Expected blob SHA: `2587753d0d99a2732a749d5aef7bebd5231dcf62` (5329 bytes).
 
-- [ ] **Step 2: Fetch LICENSE at the pinned ref and write locally**
+- [ ] **Step 2: Fetch LICENSE at the pinned commit and write locally**
 
-Run:
 ```bash
-gh api repos/agynio/gh-pr-review/contents/LICENSE?ref=v1.6.2 --jq '.content' \
+gh api 'repos/agynio/gh-pr-review/contents/LICENSE?ref=d2c86f61c5709c567e8487ba82f04112a456c221' --jq '.content' \
   | base64 -d > /Users/wahyubucil/projects/github.com/wahyubucil/agents/plugins/code-review/skills/gh-pr-review/LICENSE
 ```
+Expected blob SHA: `67a7464e95e37a9a00044d65cac56c3280768266` (1061 bytes).
 
 - [ ] **Step 3: Write VERSION file**
 
@@ -169,9 +170,10 @@ Write `/Users/wahyubucil/projects/github.com/wahyubucil/agents/plugins/code-revi
 
 ```
 upstream: agynio/gh-pr-review
-tag: v1.6.2
-commit: 5f103ba9522a8bfdcd3c707a0cbd76b5ad009c16
+commit: d2c86f61c5709c567e8487ba82f04112a456c221
+commit_date: 2026-04-13
 fetched_at: 2026-05-05
+note: pinned to a commit on main; latest release tag v1.6.2 predates SKILL.md and LICENSE
 ```
 
 - [ ] **Step 4: Verify SKILL.md frontmatter is valid**
@@ -206,7 +208,7 @@ git -C /Users/wahyubucil/projects/github.com/wahyubucil/agents add \
   plugins/code-review/skills/gh-pr-review/SKILL.md \
   plugins/code-review/skills/gh-pr-review/LICENSE \
   plugins/code-review/skills/gh-pr-review/VERSION
-git -C /Users/wahyubucil/projects/github.com/wahyubucil/agents commit -m "feat(code-review): vendor agynio/gh-pr-review skill (v1.6.2)"
+git -C /Users/wahyubucil/projects/github.com/wahyubucil/agents commit -m "feat(code-review): vendor agynio/gh-pr-review skill (commit d2c86f6)"
 ```
 
 ---
