@@ -14,7 +14,7 @@ and `/review-discussion` answers focused questions about a PR with lazy-loaded s
 ## Install
 
 ```bash
-# In a Claude Code session, from a directory containing the agents repo:
+# In a Claude Code session, with an absolute path to a local clone of the agents repo:
 /plugin marketplace add /path/to/wahyubucil/agents
 /plugin install code-review@wahyubucil-agents
 
@@ -82,29 +82,32 @@ Frontmatter fields:
 | `sections` | map | Section name → `{ refs, model }`. Frontmatter key is the slug (lowercase, underscores); body heading is Title Case. |
 | `sections.<x>.refs` | string[] | File paths or `skill:<name>`. |
 | `sections.<x>.model` | string | `inherit`/`sonnet`/`opus`/`haiku`. Default `inherit`. |
-| `min_confidence` | int | Default 80. Findings below this are dropped. |
+| `min_confidence` | int in [0, 100] | Default 80. Findings below this are dropped. |
 | `skip_authors` | string[] | PR authors whose PRs `/review` skips wholesale. |
 | `skip_review_authors` | string[] | (Optional) Reviewer logins `/gather-insight-pr` ignores. |
 
 ## Troubleshooting
 
-- **`gh-pr-review: command not found`** — install the CLI extension:
-  `gh extension install agynio/gh-pr-review`. The bundled skill teaches Claude how to
-  use the binary, but doesn't ship the binary itself.
+- **`Missing dependency: gh extension install agynio/gh-pr-review`** (or the gh CLI shows
+  `unknown command "pr-review"`) — run `gh extension install agynio/gh-pr-review` to
+  install. The bundled skill teaches Claude how to use the binary, but doesn't ship the
+  binary itself.
 - **Plugin's `gh-pr-review` skill not loaded** — run `/plugin reload`, or restart Claude
   Code. The skill is bundled with the plugin and should auto-load on install.
-- **Review not submitted** — that's by design. `/review` opens a *pending* review so you
-  can sanity-check it before it goes out. Submit via the printed
-  `gh pr-review review --submit ...` command, or by re-prompting Claude. If you re-run
-  `/review` it will detect the pending review and bail with "already reviewed at HEAD" —
-  in that case, submit manually via the GitHub UI.
+- **Review not submitted** — pending reviews are by design; submit via the printed
+  `gh pr-review review --submit ...` command, or via the GitHub UI. Note: re-running
+  `/review` only detects prior **submitted** self-reviews via the delta logic. Pending
+  (unsubmitted) reviews aren't auto-detected — submit or discard the existing pending
+  review on GitHub before re-running, otherwise you may end up with multiple stacked
+  pending reviews on the same PR.
 - **Bot reviewer comments included in `/gather-insight-pr`** — the command filters by
   reviewer login. Check the bot login spelling and add it to frontmatter
   `skip_review_authors`.
 - **Wrong section assigned to a rule from `/gather-insight-discussion`** — use the
-  `<override>` prompt the command offers, or edit the artifact directly afterward.
-- **Artifact format errors** — `/init replace` rewrites the artifact from the template.
-  This wipes all rules, so back up first.
+  `Override?` prompt the command offers, or edit the artifact directly afterward.
+- **Artifact format errors** — re-run `/init` and answer `r` (replace) at the existence
+  prompt, OR use `/init --quick` to skip prompts. Both rewrite the artifact from the
+  template (you'll lose all rules — back up first if needed).
 
 ## Versioning the bundled skill
 
