@@ -16,7 +16,7 @@ Walk the steps below in order. Do not skip steps. The "Hard rules" block at the 
 
 Strip leading/trailing whitespace from `$ARGUMENTS`. Split on whitespace into tokens.
 
-**Optional `--model X` flag.** Scan the tokens for an adjacent pair `--model <opus|sonnet|haiku>` (case-insensitive on the value). If found, capture `<X>` as the explicit answering-agent model and **remove both tokens** from the argument list before continuing. Anything other than `opus`/`sonnet`/`haiku` after `--model` is a usage error — print the usage block (below) and exit. If no `--model` flag is present, the answering agent inherits from the parent (default).
+**Optional `--model X` flag.** Scan only the **first** and **last** token pair for `--model <opus|sonnet|haiku>` (case-insensitive on the value). If found at either boundary, capture the value as the explicit answering-agent model and **strip both tokens** from the question. If `--model` appears mid-question (not at the first or last token-pair), treat it as part of the question text and do NOT strip — this avoids mangling meta-questions like `"compare --model opus to --model sonnet"`. Only one `--model` flag is honored per invocation; if both leading and trailing positions carry one, **the leading position wins**. Anything other than `opus`/`sonnet`/`haiku` after a boundary `--model` is a usage error — print the usage block (below) and exit. If no boundary `--model` flag is present, the answering agent inherits from the parent (default).
 
 After flag stripping, treat the remaining tokens as `[<maybe-pr>] <question…>`.
 
@@ -71,7 +71,20 @@ No PR found for the current branch and no PR argument provided.
 
 Then exit.
 
-If `gh pr view <pr> -R <owner>/<repo>` errors with "not found" (the PR token is non-existent), print the same usage block plus a hint that the PR doesn't exist, and exit.
+**Validate PR existence (explicit URL or integer tokens).** Before proceeding, run a non-conditional existence check after `<owner>/<repo>` and `<pr-number>` are resolved from an explicit token:
+
+```bash
+gh pr view <pr-number> -R <owner>/<repo> --json number -q .number 2>/dev/null
+```
+
+If this fails (non-zero exit, empty output, or "not found" error), bail with the usage block from step 1 plus this hint, and exit:
+
+```
+PR <pr-number> not found in <owner>/<repo>.
+Check the URL or number, or omit it to auto-detect from the current branch.
+```
+
+This guarantees PR existence is validated before the planner runs (and before the metadata fetch in step 4). The auto-detect branch (where `gh pr view --json number -q .number` is the resolution path itself) is already validated by that same command's success/failure.
 
 Carry `<owner>/<repo>` and `<pr-number>` into the next step.
 
@@ -168,11 +181,13 @@ If the diff is empty (an empty PR — no code changes), continue with an empty d
 
 For each slug in `sections_to_load`:
 
-1. Read the artifact body (everything after the closing `---` of the frontmatter).
-2. Enumerate every `## ` heading.
-3. Slugify each: lowercase, whitespace runs → `_`, drop characters not in `[a-z0-9_]`.
-4. Pick the heading whose slugified form equals the section slug. The body region runs from the line after that heading to the line before the next `## ` heading or EOF.
-5. If no body heading slugifies to the slug, warn (`section <slug>: no body heading found, using empty body`) and continue with empty content.
+1. **Existence check against frontmatter first.** If the slug is NOT a key in the artifact's frontmatter `sections:` map, log `section <slug>: not in artifact frontmatter, ignoring` and **skip — do not load anything for this slug**. The planner emitted a slug that doesn't exist (a hallucinated slug); there is no body to look for.
+2. Else, the slug IS in frontmatter. Resolve the body:
+   1. Read the artifact body (everything after the closing `---` of the frontmatter).
+   2. Enumerate every `## ` heading.
+   3. Slugify each: lowercase, whitespace runs → `_`, drop characters not in `[a-z0-9_]`.
+   4. Pick the heading whose slugified form equals the section slug. The body region runs from the line after that heading to the line before the next `## ` heading or EOF.
+   5. If no body heading slugifies to the slug, log `section <slug>: no body heading found, using empty body` and continue with empty body content.
 
 If `sections_to_load` is empty, this step is a no-op.
 
@@ -190,7 +205,7 @@ For each ref in `refs_to_load`:
 
 ### Extra resources
 
-- **Extra skills** (`extra_resources.skills`): resolve via the same `skill:<name>` precedence as above (no `skill:` prefix here — the names came directly from the question). Same on-miss behavior.
+- **Extra skills** (`extra_resources.skills`): resolve via the same `skill:<name>` precedence as above. **Normalize first:** if a name starts with `skill:`, strip the prefix before resolving. The resolver expects bare names (e.g. `riverpod-best-practices`, not `skill:riverpod-best-practices`); the schema asks the planner for bare names, but a sloppy planner may emit the prefixed form, so this normalization is mandatory. Same on-miss behavior as above.
 - **Extra files** (`extra_resources.files`): read each with the `Read` tool. On miss, warn and continue.
 - **MCP tools** (`extra_resources.mcp_tools`): nothing to pre-load; the answering agent calls them directly when needed.
 - **Web** (`extra_resources.web`): nothing to pre-load; the answering agent calls `WebFetch` / `WebSearch` when needed.
@@ -420,17 +435,28 @@ Parse the user's reply (case-insensitive single character; empty defaults to `n`
      Event? (COMMENT/REQUEST_CHANGES/APPROVE)
      ```
 
-     Once a valid event is captured, run:
+     Once a valid event is captured, **prompt the user for the summary body** before submitting:
+
+     ```
+     Summary body (optional, press enter to skip):
+     ```
+
+     Capture the multi-line input until the user submits. If empty, pass `--body ""` to the submit command. Otherwise, pass the captured text via heredoc to preserve newlines. The orchestrator does NOT synthesize a summary for `/review-discussion` (this differs from `/review`, which composes a structured summary).
+
+     With the event and summary body captured, run:
 
      ```bash
      gh pr-review review --submit \
        --review-id <review-id> \
        --pr <pr-number> -R <owner>/<repo> \
        --event <chosen-event> \
-       --body "<your summary>"
+       --body "$(cat <<'EOF'
+     <captured summary verbatim, or empty>
+     EOF
+     )"
      ```
 
-     The user's summary body is whatever they typed at the previous step — the orchestrator does not synthesize one for `/review-discussion` (this differs from `/review`, which composes a structured summary). If the user did not provide a summary, send an empty `--body ""` and surface the `gh pr-review` result.
+     If the captured summary is empty, substitute `--body ""` directly (skip the heredoc).
 
      Surface the result. If submission fails, print the error verbatim and keep the pending review (the user can submit manually).
 
@@ -456,4 +482,4 @@ These constraints are non-negotiable. Re-read them before each step:
 - **The planner is just a planner.** It picks scope; it does NOT answer the question. The answering agent is what produces the prose answer.
 - **Use the bundled `gh-pr-review` skill semantics for any pending-review actions.** Do not re-document the CLI flags inline; lean on the skill. Review IDs are `PRR_…`; thread IDs are `PRRT_…`; comment node IDs are `PRRC_…`.
 - **If the artifact is missing, do not block the answer.** Proceed in degraded mode with the warning. Artifact absence is an annotation on the answer's grounding, not a stopping condition.
-- **Use only the declared tools:** `Bash` (scoped to `gh pr-review:*`, `gh pr:*`, `gh api:*`, `gh repo:*`, `git:*`), `Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `Agent`. Do not request anything else.
+- **Tool scope (orchestrator vs sub-agent).** The `allowed-tools` list in this command's frontmatter restricts what the **orchestrator** (this prompt) can call directly: `Bash` (scoped to `gh pr-review:*`, `gh pr:*`, `gh api:*`, `gh repo:*`, `git:*`), `Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `Agent`. The orchestrator must not request anything else. The **answering sub-agent** dispatched via the `Agent` tool in step 6 inherits the session's full tool set — including MCP tools authenticated for the session. This is intentional: the answering agent may need MCP tools the orchestrator doesn't, and step 6's prompt explicitly invites it to call them. **Do not add MCP tool entries to `allowed-tools`;** they're available to sub-agents through inheritance, not through this list.
