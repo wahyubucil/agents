@@ -52,32 +52,48 @@ Do not skip this prompt in non-quick mode if the file exists.
 
 ## Auto-discovery
 
+Run auto-discovery only after the existence check resolves to `r` (replace) or `m` (merge), OR if no existing best-practices file is present. If the user picks `a` (abort), exit before running any `find`/`Glob`/`Grep` calls — auto-discovery is not free, and aborting should be cheap.
+
 Before walking sections, scan the target project and skill directories for existing artifacts that could become refs. Run these probes from the target-project root once, up front, so suggestions are ready to surface during the section walk.
 
 ### File patterns
 
-Use `Glob` or `Bash find -maxdepth 4 . -type f` and filter. For each section below, collect matching paths:
+Project-root convention files are checked at the project root only (no recursive find). Fuzzy `*<keyword>*` matching is restricted to documentation file extensions: `*.md`, `*.markdown`, `*.txt`, `*.rst`. Directory globs under `docs/` are bound to the `docs/` tree (not arbitrary depth). For each section below, collect matching paths:
 
 | Section | File patterns |
 |---------|---------------|
-| `security` | `SECURITY.md`, anything under `docs/security/`, files whose name contains `security` (case-insensitive) |
-| `conventions` | `CONTRIBUTING.md`, `STYLE.md`, `AGENTS.md`, root `CLAUDE.md` |
-| `performance` | anything under `docs/performance/`, files whose name contains `perf` or `performance` (case-insensitive) |
+| `security` | root-only `./SECURITY.md`; anything under `docs/security/`; doc files (`*.md`, `*.markdown`, `*.txt`, `*.rst`) whose name contains `security` (case-insensitive) |
+| `conventions` | root-only: `./CONTRIBUTING.md`, `./STYLE.md`, `./AGENTS.md`, `./CLAUDE.md` |
+| `performance` | anything under `docs/performance/`; doc files (`*.md`, `*.markdown`, `*.txt`, `*.rst`) whose name contains `perf` or `performance` (case-insensitive) |
 | `simplicity` | (no file patterns; skill probe only) |
-| `testing` | anything under `docs/testing/`, `TESTING.md` |
-| `error_handling` | (no file patterns; skill probe only) |
-| `bugs` | (no file patterns; skill probe only) |
+| `testing` | anything under `docs/testing/`; root-only `./TESTING.md` |
+| `error_handling` | (no probes) |
+| `bugs` | (no probes) |
 
-Examples of usable Bash:
+Examples of usable Bash. For root-only convention files use a simple `[ -f ./<filename> ]` check, not a recursive `find`. For fuzzy matches restrict by extension:
 
 ```bash
-find . -maxdepth 4 -type f \( -iname 'SECURITY.md' -o -ipath '*/docs/security/*' -o -iname '*security*' \) 2>/dev/null
-find . -maxdepth 4 -type f \( -iname 'CONTRIBUTING.md' -o -iname 'STYLE.md' -o -iname 'AGENTS.md' -o -iname 'CLAUDE.md' \) 2>/dev/null
-find . -maxdepth 4 -type f \( -ipath '*/docs/performance/*' -o -iname '*perf*' -o -iname '*performance*' \) 2>/dev/null
-find . -maxdepth 4 -type f \( -ipath '*/docs/testing/*' -o -iname 'TESTING.md' \) 2>/dev/null
+# Root-only: SECURITY.md
+[ -f ./SECURITY.md ] && echo ./SECURITY.md
+# docs/security/** plus fuzzy doc-extension matches
+find ./docs/security -type f 2>/dev/null
+find . -maxdepth 4 -type f \( -iname '*.md' -o -iname '*.markdown' -o -iname '*.txt' -o -iname '*.rst' \) -iname '*security*' 2>/dev/null
+
+# Root-only conventions files
+for f in ./CONTRIBUTING.md ./STYLE.md ./AGENTS.md ./CLAUDE.md; do
+  [ -f "$f" ] && echo "$f"
+done
+
+# docs/performance/** plus fuzzy doc-extension matches for perf/performance
+find ./docs/performance -type f 2>/dev/null
+find . -maxdepth 4 -type f \( -iname '*.md' -o -iname '*.markdown' -o -iname '*.txt' -o -iname '*.rst' \) \( -iname '*perf*' -o -iname '*performance*' \) 2>/dev/null
+
+# docs/testing/** plus root-only TESTING.md
+find ./docs/testing -type f 2>/dev/null
+[ -f ./TESTING.md ] && echo ./TESTING.md
 ```
 
-Strip noise (e.g. `.git/`, `node_modules/`, `.venv/`, `dist/`, `build/`).
+Strip noise (e.g. `.git/`, `node_modules/`, `.venv/`, `dist/`, `build/`, `vendor/`).
 
 ### Skill probe paths
 
@@ -131,17 +147,19 @@ Walk the seven default sections in this exact order:
 
 For each section in order:
 
-1. Print a banner heading. Use the title-cased section name. Examples: `## Security`, `## Bugs`, `## Performance`, `## Simplicity`, `## Testing`, `## Error Handling`, `## Conventions`.
+1. Print a UI banner so the user knows which section they're configuring. Use a format that is clearly *not* artifact content — for example a single line `--- Section: Security ---` or `[Section: Security]`. Do **not** emit `## Security` as a banner; that style is reserved for the artifact body. The banner is for the user's terminal only and is never written to the file. Use the title-cased section name in the banner: `Security`, `Bugs`, `Performance`, `Simplicity`, `Testing`, `Error Handling`, `Conventions`.
 2. Surface auto-discovery suggestions on a single line below the banner if any matches were found:
    ```
    Found: SECURITY.md, docs/security/auth.md, skill:owasp-defenses
    ```
-   If nothing was found for this section, omit this line (or print `Found: (none)`).
+   If nothing was found for this section, omit this line entirely.
 3. Ask the refs question EXACTLY:
    ```
    Refs for this section? (paths or skill:<name>, comma-separated, or empty)
    ```
    Parse the response: split on commas, strip whitespace from each item, drop empty items. Empty input becomes `[]`. Suggestions are NOT auto-applied — the user must include them in their reply if they want them.
+
+   Limitation: paths and skill names with literal `,` are not supported via this prompt. If you need such a ref, edit `.claude/code-review/best-practices.md` directly after init.
 4. Ask the model question EXACTLY:
    ```
    Model? (inherit/sonnet/opus/haiku) [inherit]
@@ -215,6 +233,19 @@ Final `skip_authors` list = default list + user additions, preserving order, ded
 ## Render
 
 Read the template at `${CLAUDE_PLUGIN_ROOT}/templates/best-practices.template.md` (this is a Bash-resolvable path; use `Read` after expanding the variable, e.g. `bash -c 'echo $CLAUDE_PLUGIN_ROOT/templates/best-practices.template.md'`).
+
+Before reading, verify the template exists. If `CLAUDE_PLUGIN_ROOT` is unset (broken plugin install) or the template file is missing, bail with the install hint instead of producing a broken file. Run:
+
+```bash
+TEMPLATE="${CLAUDE_PLUGIN_ROOT}/templates/best-practices.template.md"
+if [ -z "${CLAUDE_PLUGIN_ROOT}" ] || [ ! -f "$TEMPLATE" ]; then
+  echo "ERROR: best-practices template not found at $TEMPLATE."
+  echo "Reinstall the code-review plugin: /plugin reinstall code-review@wahyubucil-agents"
+  exit 1
+fi
+```
+
+If the guard above fails, stop here — do not write the artifact. Surface the error message to the user verbatim and abort. Only continue rendering if the template is present.
 
 Build the new file as follows.
 
@@ -296,6 +327,7 @@ These constraints are non-negotiable. Re-read them before each step:
 - **Do not invent additional sections** beyond what the user provides. The seven defaults are fixed; custom sections come only from the user's explicit input in the custom-section loop.
 - **Do not auto-fill rule bodies** during init. Section bodies stay as the placeholder comment `<!-- Add inline rules here, or rely on refs above -->`. Future commands (`/gather-insight-discussion`, `/gather-insight-pr`) populate rules.
 - **Do not skip the existence prompt** in non-quick mode if `.claude/code-review/best-practices.md` already exists. Always offer `(r)eplace / (m)erge / (a)bort` and respect the choice.
+- **Do not run auto-discovery before the existence-check decision.** If the user picks `a` (abort), exit before any `find`/`Glob`/`Grep` calls. Auto-discovery only runs when the resolution is `r` (replace), `m` (merge), or no existing file.
 - **Do not silently lose user input.** When a question requires re-asking (invalid input), echo what was received first so the user sees what you parsed.
 - **Do not ask any questions in `--quick` mode.** All defaults, no prompts, behave as if the user chose `r` if the file already exists.
 - **Use only the declared tools:** `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`. Do not request anything else.
