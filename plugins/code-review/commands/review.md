@@ -305,7 +305,7 @@ For each section bundle from step 5 (or the single default bundle in degraded mo
          line_start: <int>
          line_end: <int>
          message: <imperative one-liner — what to do>
-         evidence: <the body of the comment — see style rules below>
+         evidence: <optional body of the comment — see style rules below; omit/empty when not needed>
          confidence: <0-100>
      ```
 
@@ -314,14 +314,20 @@ For each section bundle from step 5 (or the single default bundle in degraded mo
   9. **Comment style rules (verbatim):**
 
      ```
-     - `message` is imperative and short. For simple fixes (rename, flip a condition,
-       remove an unused arg, reorder two lines), the message alone should be enough;
-       the body just adds a one-line why — do not leave it empty.
+     - `message` is imperative and short. State what to do.
 
-     - `evidence` is the body of the comment. Lead with WHY in 1–3 short sentences,
-       grounded inline in the rule or code reference (e.g. "matches `path:Lx-Ly`
-       precedent", "violates the <section-slug> rule X"). For complex fixes, include
-       a fenced code block showing the concrete change.
+     - `evidence` is OPTIONAL. Leave it empty when `message` plus the anchored code
+       already makes the change obvious. Most simple fixes (rename, flip a condition,
+       remove an unused arg, reorder two lines) need no body. Only add a body when
+       the WHY isn't obvious from message + code alone.
+
+     - When you do write a body, keep it conversational and simple (1–3 short
+       sentences). Talk about concrete impact or the convention plainly. Do NOT
+       cite specific files or sections — no "AGENTS.md §2 mandates...", no
+       "matches `path:Lx-Ly` precedent", no "violates the <section-slug> rule X".
+       Write the way a senior reviewer would in a quick comment, not the way a
+       static analyzer surfaces a rule ID. For complex fixes, include a fenced
+       code block showing the concrete change.
 
      - Do not repeat the message in the body. Do not list multiple separate angles.
        Do not append a separate "Evidence:" paragraph — citations live inline in the
