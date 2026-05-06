@@ -178,7 +178,7 @@ For each surviving extraction, compare it against the existing rules in the arti
 2. Enumerate every `## ` heading in the body.
 3. Slugify each heading: lowercase, whitespace runs → `_`, drop any character that is not `[a-z0-9_]`.
 4. Pick the heading whose slugified form equals the extraction's `suggested_section`. The body region runs from the line after that heading to the line before the next `## ` heading or EOF.
-5. Identify existing rule bullets in the region — top-level lines starting with `- **`. Ignore the placeholder comment (`<!-- Add inline rules here, or rely on refs above -->`) and any sub-bullets (`  - **Why:**`, `  - **Example:**`).
+5. Identify existing rule bullets in the region — top-level lines starting with `- **`. Ignore the placeholder comment (`<!-- Add inline rules here, or rely on refs above -->`) and any sub-bullets (`  - **Why:**`, `  - **Example:**`, `  - **Source:**`). The `**Example:**` sub-bullet is recognized for legacy reasons — older PR-flow runs wrote citations under that label before the `**Source:**` rename. Both labels must be ignored when scanning for top-level rule bullets.
 
 Apply the same similarity anchor as `/gather-insight-discussion`: the existing rule covers the same imperative subject as the new rule when they share the primary verb plus the primary noun phrase. Examples: "always validate input at trust boundaries" and "check user input at API entry points" are matches (verb: validate/check, noun phrase: input at boundaries). "always check for null" and "always validate input" are not matches (different noun phrases). Wording differences alone don't count; the underlying subject must overlap.
 
@@ -205,20 +205,24 @@ Where:
 Then prompt EXACTLY:
 
 ```
-Review the X new + Y refining rules? (a)ccept all / (s)elect / (n)one [s]
+Review the X new + Y refining rules?
+  1) Accept all
+  2) Select  [recommended]
+  3) None
+Choose [2]:
 ```
 
-Substitute the actual `X` and `Y` integers in the prompt. Parse the reply (case-insensitive single character; empty defaults to `s`):
+Substitute the actual `X` and `Y` integers in the header line (the first line of the prompt). Parse the reply as a single digit; empty defaults to `2`. Re-prompt with `Enter a number 1-3.` followed by the same options block on any other input.
 
-- `a` (accept all): apply every `new` and `refines-existing` rule without per-rule confirmation.
-- `s` (select, default): walk the rules one at a time per the per-rule walkthrough below.
-- `n` (none): skip everything; jump straight to the final summary with `Added 0 rules`.
+- `1` (accept all): apply every `new` and `refines-existing` rule without per-rule confirmation.
+- `2` (select, default): walk the rules one at a time per the per-rule walkthrough below.
+- `3` (none): skip everything; jump straight to the final summary with `Added 0 rules`.
 
 If `X + Y == 0` and the user has nothing to review, skip the prompt entirely and jump straight to the final summary.
 
 ## Apply
 
-### Per-rule walkthrough (default `s`)
+### Per-rule walkthrough (option `2`, default)
 
 For each rule in the combined `new` + `refines-existing` list, in the order they were extracted:
 
@@ -247,19 +251,25 @@ For each rule in the combined `new` + `refines-existing` list, in the order they
    - `e` (edit): enter inline-edit mode. Ask which field the user wants to revise:
 
      ```
-     Edit which? (r)ule / (w)hy / (a)ll
+     Edit which?
+       1) Rule
+       2) Why
+       3) All
+     Choose:
      ```
+
+     Parse the reply as a single digit `1-3`; this prompt has no default — re-prompt with `Enter a number 1-3.` followed by the same options block on empty or invalid input.
 
      The auto-generated `evidence` string (`Reviewer @<login> on <path>:<line> in PR #<n>`) is **not** editable here — it is the audit trail provenance and rewriting it would falsify the source attribution and break parsing. If the user wants to add their own context (e.g. a snippet of the reviewer's comment), they can edit the artifact directly afterward.
 
      Re-prompt for the chosen field(s), update the in-memory state, then re-render the rule block and re-ask `(y)es / (e)dit / (n)o`. Loop until the user picks `y` or `n`.
    - `n` (no): skip this rule. Do not write anything.
 
-### Accept all (`a`)
+### Accept all (option `1`)
 
 Apply every rule in the `new` + `refines-existing` list without per-rule confirmation, in the order they were extracted, using "Apply semantics" below.
 
-### None (`n`)
+### None (option `3`)
 
 Skip everything. Jump straight to the final summary with `Added 0 rules`.
 
@@ -273,26 +283,26 @@ The semantics depend on the bucket:
   - **Placeholder rule:** if the section currently contains only the placeholder comment `<!-- Add inline rules here, or rely on refs above -->` (and nothing else), **replace** the placeholder line with the new bullet block. The placeholder must be removed once a section has at least one rule.
   - **Otherwise:** keep the existing rules in place and append the new bullet block after the last existing rule, immediately before the next `## ` heading (or before EOF if the target section is the last section).
 
-- **`refines-existing`** bucket — locate the matched existing bullet (and its `**Why:**`/`**Example:**` sub-bullets, which are the indented lines immediately following) and replace that whole bullet block with the new bullet block. Never silently rewrite an existing rule — the per-rule confirmation in the walkthrough above is what authorizes this; on `accept all`, the user has already given blanket consent. If multiple existing rules were tagged as overlapping, replace only the closest match.
+- **`refines-existing`** bucket — locate the matched existing bullet and **all** its sub-bullets (every indented `- **…:**` line immediately following — `**Why:**`, `**Example:**`, `**Source:**`) and replace that whole bullet block with the new bullet block. Both `**Example:**` and `**Source:**` are removed regardless of which label the legacy citation used; the new block carries Rule + Why + Source. Never silently rewrite an existing rule — the per-rule confirmation in the walkthrough above is what authorizes this; on `accept all`, the user has already given blanket consent. If multiple existing rules were tagged as overlapping, replace only the closest match.
 
 Use the canonical rule format:
 
 ```markdown
 - **<rule sentence>**
   - **Why:** <reason>
-  - **Example:** <evidence>
+  - **Source:** <evidence>
 ```
 
-The `**Example:**` sub-bullet is built from the rule's `evidence` field. Format it as:
+The `**Source:**` sub-bullet is built from the rule's `evidence` field. Format it as:
 
 ```
-**Example:** Reviewer @<login> on <path>:<line> in PR #<n> — "<short snippet of the comment if it adds context>"
+**Source:** Reviewer @<login> on <path>:<line> in PR #<n> — "<short snippet of the comment if it adds context>"
 ```
 
 Optionally include a short snippet (one sentence at most) of the original comment body if it materially clarifies the rule. If the snippet would just restate the rule, omit it and use only the evidence string. For comments that are entire review-summary bodies (top-level rather than inline), use `path:none, line:0` in the evidence and note it is a review summary, not an inline thread:
 
 ```
-**Example:** Reviewer @<login> review summary on PR #<n>: "<short snippet>"
+**Source:** Reviewer @<login> review summary on PR #<n>: "<short snippet>"
 ```
 
 **Preserve placeholder comments in all sections you are not modifying.** Only the section a new rule lands in loses its placeholder (and only if the section had nothing else). Never strip placeholders from sections that received no new rules in this run.
@@ -321,4 +331,6 @@ These constraints are non-negotiable. Re-read them before each step:
 - **Never silently rewrite existing rules.** `refines-existing` requires user confirmation in the per-rule walkthrough, or blanket `accept all` consent. The dedup step alone never edits the artifact.
 - **Preserve the placeholder comment** (`<!-- Add inline rules here, or rely on refs above -->`) in all sections you are not modifying. Only the section a rule lands in loses its placeholder, and only if it had nothing else.
 - **Use the bundled `gh-pr-review` skill.** Every `gh pr-review` invocation must follow the schema documented in the skill — review IDs `PRR_…`, thread IDs `PRRT_…`. Do not re-document its flags inline; lean on the skill.
+- **Citations land under `**Source:**`, never `**Example:**`.** The auto-generated evidence string for every PR-flow rule is written to a `**Source:**` sub-bullet. The `**Example:**` label is reserved for human-authored illustrations (added via `/gather-insight-discussion`); do not write a citation under that label, even if a legacy artifact contains one.
+- **Render numbered prompts exactly as specified** — header, indented options, `[recommended]` marker on the recommended option, then a `Choose [N]:` line (or bare `Choose:` when there is no default). Accept only digits in `1..N` or empty (when a default exists). On any other input, re-prompt with `Enter a number 1-N.` followed by the same options block. Do not accept single-letter shortcuts.
 - **Use only the declared tools:** `Bash` (scoped to `gh pr-review:*`, `gh repo:*`), `Read`, `Edit`, `Write`, `Agent`. Do not request anything else.

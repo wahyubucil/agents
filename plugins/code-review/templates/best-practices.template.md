@@ -34,7 +34,7 @@ skip_authors:
 This file is consumed by the `code-review` plugin (see `/init`, `/review`, `/review-discussion`).
 
 - Frontmatter is **machine-readable**: per-section `refs` (file paths or `skill:<name>`) and `model` (`inherit`/`sonnet`/`opus`/`haiku`).
-- Body is **human-readable**: rules per section as bullets, with optional `**Why:**` and `**Example:**` sub-bullets.
+- Body is **human-readable**: rules per section as bullets, with optional `**Why:**`, `**Example:**`, and `**Source:**` sub-bullets.
 
 ## Rule format
 
@@ -43,6 +43,8 @@ This file is consumed by the `code-review` plugin (see `/init`, `/review`, `/rev
   - **Why:** API returns sparse objects when fields are unauthorized
   - **Example:** `user?.profile?.name ?? 'Anonymous'`
 ```
+
+Rules may also carry a `**Source:**` sub-bullet for citation/provenance — `/gather-insight-pr` adds this automatically when mining a PR. `**Example:**` (illustration) is optional and added only when the rule is non-obvious without one; `**Source:**` (citation) identifies where the rule came from.
 
 ## Security
 <!-- Add inline rules here, or rely on refs above -->

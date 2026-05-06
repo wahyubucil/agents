@@ -35,24 +35,28 @@ test -f .claude/code-review/best-practices.md && echo EXISTS || echo MISSING
 If the output is `EXISTS` and you are NOT in `--quick` mode, prompt the user EXACTLY:
 
 ```
-.claude/code-review/best-practices.md already exists. (r)eplace / (m)erge / (a)bort? [a]
+.claude/code-review/best-practices.md already exists.
+  1) Replace
+  2) Merge
+  3) Abort  [recommended]
+Choose [3]:
 ```
 
-Parse the user's reply (case-insensitive, single character; empty defaults to `a`):
+Parse the user's reply as a single digit; empty defaults to `3`. Re-prompt with `Enter a number 1-3.` followed by the same options block on any other input.
 
-- `a` (or empty): exit immediately. Print `Aborted; no changes.` and stop. Make no edits.
-- `r`: continue with the normal flow. At write time, overwrite the existing file.
-- `m`: continue with the normal flow. At write time, **merge** with the existing file (see "Merge mode" under "Render").
+- `1` (replace): continue with the normal flow. At write time, overwrite the existing file.
+- `2` (merge): continue with the normal flow. At write time, **merge** with the existing file (see "Merge mode" under "Render").
+- `3` (or empty): exit immediately. Print `Aborted; no changes.` and stop. Make no edits.
 
 If the file does not exist, proceed without prompting.
 
-In `--quick` mode, behave as if the user picked `r` (overwrite without prompting).
+In `--quick` mode, behave as if the user picked `1` (overwrite without prompting).
 
 Do not skip this prompt in non-quick mode if the file exists.
 
 ## Auto-discovery
 
-Run auto-discovery only after the existence check resolves to `r` (replace) or `m` (merge), OR if no existing best-practices file is present. If the user picks `a` (abort), exit before running any `find`/`Glob`/`Grep` calls — auto-discovery is not free, and aborting should be cheap.
+Run auto-discovery only after the existence check resolves to `1` (replace) or `2` (merge), OR if no existing best-practices file is present. If the user picks `3` (abort), exit before running any `find`/`Glob`/`Grep` calls — auto-discovery is not free, and aborting should be cheap.
 
 Before walking sections, scan the target project and skill directories for existing artifacts that could become refs. Run these probes from the target-project root once, up front, so suggestions are ready to surface during the section walk.
 
@@ -326,8 +330,8 @@ These constraints are non-negotiable. Re-read them before each step:
 
 - **Do not invent additional sections** beyond what the user provides. The seven defaults are fixed; custom sections come only from the user's explicit input in the custom-section loop.
 - **Do not auto-fill rule bodies** during init. Section bodies stay as the placeholder comment `<!-- Add inline rules here, or rely on refs above -->`. Future commands (`/gather-insight-discussion`, `/gather-insight-pr`) populate rules.
-- **Do not skip the existence prompt** in non-quick mode if `.claude/code-review/best-practices.md` already exists. Always offer `(r)eplace / (m)erge / (a)bort` and respect the choice.
-- **Do not run auto-discovery before the existence-check decision.** If the user picks `a` (abort), exit before any `find`/`Glob`/`Grep` calls. Auto-discovery only runs when the resolution is `r` (replace), `m` (merge), or no existing file.
+- **Do not skip the existence prompt** in non-quick mode if `.claude/code-review/best-practices.md` already exists. Always offer the numbered `1) Replace / 2) Merge / 3) Abort` block (default `3`) and respect the choice.
+- **Do not run auto-discovery before the existence-check decision.** If the user picks `3` (abort), exit before any `find`/`Glob`/`Grep` calls. Auto-discovery only runs when the resolution is `1` (replace), `2` (merge), or no existing file.
 - **Do not silently lose user input.** When a question requires re-asking (invalid input), echo what was received first so the user sees what you parsed.
-- **Do not ask any questions in `--quick` mode.** All defaults, no prompts, behave as if the user chose `r` if the file already exists.
+- **Do not ask any questions in `--quick` mode.** All defaults, no prompts, behave as if the user chose `1` (replace) if the file already exists.
 - **Use only the declared tools:** `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`. Do not request anything else.

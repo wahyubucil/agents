@@ -56,13 +56,13 @@ You must extract:
 
    Then jump to the loop step (skip the rest, ask `Another? (y/n) [n]`).
 
-3. **Example** (optional): a short code or text snippet illustrating the rule. Ask once:
+3. **Example** (optional, off by default): a short code or text snippet illustrating the rule. Ask once:
 
    ```
-   Example? (code/text snippet, or empty to skip)
+   Example? (only if the rule is non-obvious without one — empty to skip)
    ```
 
-   Empty input → skip the Example. Never invent an Example for the user.
+   Empty input → skip the Example, and that is the expected default. Only add an example when the rule genuinely needs an illustration to be understood. Never invent an Example for the user, and never pad with one just because the prompt asked.
 
 Once you have rule + why (+ optional example), proceed to section assignment.
 
@@ -194,7 +194,7 @@ The body region runs from the line after the matched heading to the line before 
 
 If no body heading slugifies to the target slug, the artifact is inconsistent — handle per the consistency check above (print the inconsistency message and exit).
 
-Identify existing rule bullets — top-level lines starting with `- **`. Ignore the placeholder comment (`<!-- Add inline rules here, or rely on refs above -->`) and any sub-bullets (`  - **Why:**`, `  - **Example:**`).
+Identify existing rule bullets — top-level lines starting with `- **`. Ignore the placeholder comment (`<!-- Add inline rules here, or rely on refs above -->`) and any sub-bullets (`  - **Why:**`, `  - **Example:**`, `  - **Source:**`).
 
 For each existing rule bullet, compare semantically against the new rule (use your judgment based on the rule text + Why; do not rely on a fixed metric).
 
@@ -208,24 +208,28 @@ If at least one similar rule is found, print EXACTLY:
 Found similar rule(s):
   L<n>: <bullet text> ...
   L<n>: <bullet text> ...
-(r)eplace / (m)erge / (k)eep both / (s)kip [k]
+  1) Replace
+  2) Merge
+  3) Keep both  [recommended]
+  4) Skip
+Choose [3]:
 ```
 
 Where `<n>` is the line number of the matched bullet in the artifact and `<bullet text>` is the bare rule sentence (truncate to ~80 chars with `...` if longer). Show one line per match, up to three.
 
-Parse the reply (case-insensitive single character; empty defaults to `k`):
+Parse the reply as a single digit; empty defaults to `3`. Re-prompt with `Enter a number 1-4.` followed by the same options block on any other input.
 
-- `r` (replace): edit the matched bullet **in place** so its rule text becomes the new rule, and replace its `**Why:**` and `**Example:**` sub-bullets with the new ones (drop the example sub-bullet entirely if the new rule has no example). If multiple matches were surfaced, ask the user which line to replace before editing — do not auto-pick.
-- `m` (merge): ask the user to confirm a merged single-rule text. Print:
+- `1` (replace): edit the matched bullet **in place** so its rule text becomes the new rule, and replace **all** its sub-bullets — every indented `- **…:**` line (Why, Example, Source) — with the new ones. The new bullet has Why (mandatory) and Example (only if the user provided one). The discussion-flow does not generate Source; if the matched bullet had a `**Source:**` from a prior PR-flow write, it is dropped (the rewrite invalidates that citation). If multiple matches were surfaced, ask the user which line to replace before editing — do not auto-pick.
+- `2` (merge): ask the user to confirm a merged single-rule text. Print:
 
   ```
   Proposed merged rule: <merged text>
   Confirm? (y to accept, or type a replacement)
   ```
 
-  Use the user's confirmed text as the new rule sentence. Then edit the matched bullet in place, replacing rule + Why + Example. If multiple matches were surfaced, ask which line to merge into.
-- `k` (keep both, default): append the new rule as a new bullet at the end of the section.
-- `s` (skip): bail out without writing anything. Print `Skipped — no change.` and jump to the loop step.
+  Use the user's confirmed text as the new rule sentence. Then edit the matched bullet in place using the same whole-block replacement semantics as `1` (replace). If multiple matches were surfaced, ask which line to merge into.
+- `3` (keep both, default): append the new rule as a new bullet at the end of the section.
+- `4` (skip): bail out without writing anything. Print `Skipped — no change.` and jump to the loop step.
 
 If no similar rules are found, skip the conflict prompt and proceed straight to "Confirm and apply" with append-as-new-bullet semantics.
 
@@ -255,15 +259,20 @@ Parse the reply (case-insensitive single character; empty defaults to `n`):
 - `e`: enter inline-edit mode. Ask which field the user wants to revise:
 
   ```
-  Edit which? (r)ule / (w)hy / (e)xample / (a)ll
+  Edit which?
+    1) Rule
+    2) Why
+    3) Example
+    4) All
+  Choose:
   ```
 
-  Re-prompt for the chosen field(s), update your in-memory state, then re-render the diff and re-ask `Apply? (y)es / (e)dit / (n)o`. Loop until the user picks `y` or `n`.
+  Parse the reply as a single digit `1-4`; this prompt has no default — re-prompt with `Enter a number 1-4.` followed by the same options block on empty or invalid input. Then re-prompt for the chosen field(s), update your in-memory state, re-render the diff and re-ask `Apply? (y)es / (e)dit / (n)o`. Loop until the user picks `y` or `n`.
 - `n`: bail out without writing. Print `Aborted — no change.` and jump to the loop step.
 
 On `y`, use `Edit` to apply the change to `.claude/code-review/best-practices.md`. Anchor the body region the same way as in the conflict scan: scan the body for `## ` headings, slugify each, and use the heading whose slugified form equals the target slug as the anchor — do not reconstruct the title from the slug. The semantics depend on the conflict-scan outcome:
 
-- **Replace** or **merge**: locate the matched bullet (and its `**Why:**`/`**Example:**` sub-bullets, which are the indented lines immediately following) and replace that whole bullet block with the new bullet block.
+- **Replace** or **merge**: locate the matched bullet and **all** its sub-bullets — every indented `- **…:**` line immediately following (Why, Example, Source) — and replace that whole bullet block with the new bullet block. The discussion-flow's new bullet block contains Rule + Why and an optional Example; it never contains a Source. Any pre-existing `**Source:**` on the matched bullet is dropped on replace/merge.
 - **Keep both / no conflict (append)**: insert the new bullet at the end of the section's body region — i.e. immediately before the next `## ` heading, or before EOF if the target section is the last section.
   - **Placeholder rule:** if the section currently contains only the placeholder comment `<!-- Add inline rules here, or rely on refs above -->` (and nothing else), **replace** the placeholder line with the new bullet block. The placeholder must be removed once a section has at least one rule.
   - **Otherwise:** keep the existing rules in place and append the new bullet block after the last existing rule. Do not touch the placeholder if it is somehow present alongside other rules (it should not be — but if it is, leave it for the user to clean up).
@@ -312,5 +321,7 @@ These constraints are non-negotiable. Re-read them before each step:
     - **Example:** <example>
   ```
 
-  Omit the `**Example:**` sub-bullet entirely when the example is skipped.
+  Omit the `**Example:**` sub-bullet entirely when the example is skipped. The discussion-flow never emits a `**Source:**` sub-bullet; that field is reserved for `/gather-insight-pr` citations.
+- **Skip the example unless the rule is non-obvious without one.** Empty input is the expected default. Do not invent or pad an example just because the prompt asked.
+- **Render numbered prompts exactly as specified** — header, indented options, `[recommended]` marker on the recommended option, then a `Choose [N]:` line (or bare `Choose:` when there is no default). Accept only digits in `1..N` or empty (when a default exists). On any other input, re-prompt with `Enter a number 1-N.` followed by the same options block. Do not accept single-letter shortcuts.
 - **Use only the declared tools:** `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`. Do not request anything else.
