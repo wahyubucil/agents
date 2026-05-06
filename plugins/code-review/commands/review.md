@@ -304,12 +304,46 @@ For each section bundle from step 5 (or the single default bundle in degraded mo
        - path: <relative path>
          line_start: <int>
          line_end: <int>
-         message: <brief, action-oriented>
-         evidence: <which rule or shared context grounds this>
+         message: <imperative one-liner — what to do>
+         evidence: <the body of the comment — see style rules below>
          confidence: <0-100>
      ```
 
      Followed by: `If no findings, return findings: [].`
+
+  9. **Comment style rules (verbatim):**
+
+     ```
+     - `message` is imperative and short. For simple fixes (rename, flip a condition,
+       remove an unused arg, reorder two lines), the message alone should be enough;
+       the body just adds a one-line why.
+
+     - `evidence` is the body of the comment. Lead with WHY in 1–3 short sentences,
+       grounded inline in the rule or code reference (e.g. "matches `path:Lx-Ly`
+       precedent", "violates the <section> rule X"). For complex fixes, include
+       a fenced code block showing the concrete change.
+
+     - Do not repeat the message in the body. Do not list multiple separate angles.
+       Do not append a separate "Evidence:" paragraph — citations live inline in the
+       prose, not as a footer.
+
+     - When the fix is a literal in-place replacement of the anchored lines, prefer
+       GitHub's suggestion block:
+
+           ```suggestion
+           <full replacement for the anchored line range, indentation included>
+           ```
+
+       Use `suggestion` only when ALL of these hold:
+         1. The block replaces the EXACT anchored line range (line_start..line_end),
+            no more and no less.
+         2. The replacement indentation matches the existing file.
+         3. The replacement is a complete, committable unit — not a sketch.
+       If any condition fails, use a plain ```<lang> block instead. A plain block
+       illustrates; a suggestion block is a one-click commit. Don't conflate them.
+
+     - One suggestion block per comment. GitHub only applies the first.
+     ```
 
 Once all parallel `Agent` calls complete, collect every finding into a flat list. **Tag each finding with the originating section slug** (so step 12 can render the section in the comment header). Findings outside that schema are ignored.
 
