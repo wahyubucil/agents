@@ -1,7 +1,7 @@
 {
   "name": "code-review",
   "description": "Project-aware code review with per-section parallel agents and pending GitHub reviews. Five slash commands: /init, /gather-insight-discussion, /gather-insight-pr, /review, /review-discussion.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Wahyu Budi Saputra",
     "email": "wahyubucil@gmail.com"
