@@ -322,12 +322,46 @@ Spawn a **single sequential** `Agent` tool call:
          - path: <relative path>
            line_start: <int>
            line_end: <int>
-           message: <brief, action-oriented>
-           evidence: <which loaded resource grounds this>
+           message: <imperative one-liner — what to do>
+           evidence: <the body of the comment — see style rules below>
            confidence: <0-100>
        ```
 
        Each finding's `(line_start, line_end)` MUST be inside the in-scope diff loaded in step 5 — never anchor a suggestion to a line outside what the answering agent saw. If no actionable issues, omit the block entirely (do **not** emit `suggested_findings: []`).
+
+     - Comment style rules (apply to every entry in `suggested_findings`):
+
+       ```
+       - `message` is imperative and short. For simple fixes (rename, flip a condition,
+         remove an unused arg, reorder two lines), the message alone should be enough;
+         the body just adds a one-line why — do not leave it empty.
+
+       - `evidence` is the body of the comment. Lead with WHY in 1–3 short sentences,
+         grounded inline in the rule or code reference (e.g. "matches `path:Lx-Ly`
+         precedent", "violates the <section-slug> rule X"). For complex fixes, include
+         a fenced code block showing the concrete change.
+
+       - Do not repeat the message in the body. Do not list multiple separate angles.
+         Do not append a separate "Evidence:" paragraph — citations live inline in the
+         prose, not as a footer.
+
+       - When the fix is a literal in-place replacement of the anchored lines, prefer
+         GitHub's suggestion block:
+
+             ```suggestion
+             <full replacement for the anchored line range, indentation included>
+             ```
+
+         Use `suggestion` only when ALL of these hold:
+           1. The block replaces the EXACT anchored line range (line_start..line_end),
+              no more and no less.
+           2. The replacement indentation matches the existing file.
+           3. The replacement is a complete, committable unit — not a sketch.
+         If any condition fails, use a plain ```<lang> block instead. A plain block
+         illustrates; a suggestion block is a one-click commit. Don't conflate them.
+
+       - One suggestion block per comment. GitHub only applies the first.
+       ```
 
 When the answering agent returns, capture its full prose response (including the `### Suggested findings` block, if present).
 
