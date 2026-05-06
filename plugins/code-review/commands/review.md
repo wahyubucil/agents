@@ -412,18 +412,23 @@ gh pr-review review --add-comment \
   --line <line_end> \
   --start-line <line_start> \
   --body "$(cat <<EOF
-[<section> · confidence <N>] <message>
+<message>
 
 <evidence>
+
+---
+🤖 _Agent review — <sections>_
 EOF
 )"
 ```
 
 **Body format (must follow exactly):**
 
-- Header line: `[<section> · confidence <N>] <one-line action>` where `<section>` is the originating section slug, `<N>` is the merged confidence (after step 8), and `<one-line action>` is the finding's `message`.
+- `<message>` line: the finding's `message` field — an imperative one-liner.
 - Blank line.
-- `<evidence>` paragraph (the merged evidence string from step 8, including any `|`-joined cross-section evidence).
+- `<evidence>` paragraph(s): the merged evidence string from step 8 (paragraphs joined by blank lines; may include a fenced code block — `suggestion` if it cleanly replaces the anchored lines, plain ` ```<lang> ` otherwise).
+- Blank line, then the literal separator `---` on its own line, then a blank line.
+- Footer line: `🤖 _Agent review — <sections>_` where `<sections>` is the merged finding's `contributing_sections` list joined with ` · ` (space–middle-dot–space). Slugs render verbatim — lowercase, underscores intact, no title-casing. For a single-section finding this is just the one slug (e.g. `🤖 _Agent review — bugs_`).
 
 **Anchoring rules:**
 
