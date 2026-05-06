@@ -494,24 +494,31 @@ Submit when ready:
 <summary body draft>
 
 Submit? Reply with one of:
-  n                                    — don't submit (review stays pending on GitHub)
-  comment / request_changes / approve  — submit with the draft summary above as the body
+  n / no / cancel                          — don't submit (review stays pending on GitHub)
+  approve / lgtm / ship it / looks good    — submit as APPROVE with the draft summary above as the body
+  comment                                  — submit as COMMENT with the draft summary above as the body
+  submit / send / post / request changes   — submit as REQUEST_CHANGES with the draft summary above as the body
 ```
 
 Where `<pr-url>` is `https://github.com/<owner>/<repo>/pull/<pr-number>` and `<summary body draft>` is the full Markdown summary you composed in step 13 (rendered as-is, not in a fenced block — the user is going to copy-paste it into the `--body` argument).
 
-Parse the user's reply (case-insensitive, trim whitespace; accept obvious variants like `request changes` for `request_changes` and `no` for `n`):
+Parse the user's reply against the **first non-empty line**, case-insensitive, trimmed. **First match wins** — apply the rules in this order:
 
-- `n`, `no`, or empty → exit cleanly. The pending review remains visible on GitHub for manual editing or submission later.
-- `comment` → event = `COMMENT`
-- `request_changes` → event = `REQUEST_CHANGES`
-- `approve` → event = `APPROVE`
-- Anything else → echo what was received and re-ask:
+1. **Cancel** — first line is empty or one of: `n`, `no`, `nope`, `cancel`. → exit cleanly. The pending review remains visible on GitHub for manual editing or submission later.
+2. **APPROVE** — first line contains any of: `approve`, `lgtm`, `ship it`, `looks good`, `good to go`. → event = `APPROVE`.
+3. **COMMENT** — first line is exactly one of: `comment`, `comments`, `comment only`. → event = `COMMENT`. (Exact-match, not `contains` — too easy for "submit a comment" or "approve, just one comment on line 4" to false-match otherwise.)
+4. **REQUEST_CHANGES** — first line contains any of: `submit`, `send`, `post`, `request changes`, `request_changes`, `go ahead`. → event = `REQUEST_CHANGES`.
+5. **Anything else** — echo what was received (truncate to ~60 chars if longer) and re-ask:
 
   ```
-  Got "<received>", which is not n/comment/request_changes/approve. Try again.
-  Submit? (n / comment / request_changes / approve)
+  Got "<received>", which I can't read as cancel/approve/comment/submit. Try again with one of:
+    n          — don't submit
+    submit     — submit as REQUEST_CHANGES (also "request changes", "send", "post")
+    approve    — submit as APPROVE (also "lgtm", "ship it", "looks good")
+    comment    — submit as COMMENT
   ```
+
+The order matters: the approve check runs before request_changes, so "approve and submit" → APPROVE. The cancel match is exact (line is one of `n` / `no` / `nope` / `cancel` after trim), so a sloppy "no, send it" falls through to rule 4 and submits. If the user means cancel, they should type just `n` or `no`.
 
 When a valid event is captured, run:
 
@@ -531,7 +538,7 @@ After this step the run is complete. Do not loop, do not re-spawn agents.
 
 These constraints are non-negotiable. Re-read them before each step:
 
-- **Never auto-submit.** Always stop at "Submit?" (step 14). The pending review must be visible on GitHub before the user has a chance to approve submission. The only path that runs `gh pr-review review --submit` is when the user replies in step 14 with an explicit event keyword (`comment`, `request_changes`, or `approve`). **Stop. Do not submit.**
+- **Never auto-submit.** Always stop at "Submit?" (step 14). The pending review must be visible on GitHub before the user has a chance to approve submission. The only path that runs `gh pr-review review --submit` is when the user replies in step 14 — see step 14 for what counts as a valid reply. Loose phrasing is allowed; the reply must come from the user *post-prompt*, not be inferred from the original question. **Stop. Do not submit.**
 - **Never lower the `min_confidence` threshold below the artifact's value.** The user's threshold (or 80 in degraded mode) is authoritative; do not relax it because findings are sparse.
 - **Never anchor an inline comment to a line outside the delta diff.** If a finding cites an older pre-delta line for context, mention it in the body text but anchor the comment on a line inside the delta diff. Lines outside the in-scope diff are off-limits for anchors.
 - **Never run build, typecheck, or lint.** CI handles those. The build/typecheck/lint disclaimer must appear verbatim in every section agent's prompt.

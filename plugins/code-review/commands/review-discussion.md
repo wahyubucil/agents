@@ -457,27 +457,34 @@ Parse the user's reply (case-insensitive single character; empty defaults to `n`
        --event COMMENT|REQUEST_CHANGES|APPROVE \
        --body "<your summary>"
 
-   Submit? Reply with the event keyword on the first line, optionally followed by a summary body on later lines:
-     n                                    — don't submit (review stays pending on GitHub)
-     comment / request_changes / approve  — submit as that event
-   Lines after the first become the summary body verbatim. Omit them for an empty body.
+   Submit? Reply with one of:
+     n / no / cancel                          — don't submit (review stays pending on GitHub)
+     approve / lgtm / ship it / looks good    — submit as APPROVE
+     comment                                  — submit as COMMENT (non-blocking)
+     submit / send / post / request changes   — submit as REQUEST_CHANGES
+   Lines after the first become the summary body verbatim. Omit for an empty body.
    ```
 
    Where `<pr-url>` is `https://github.com/<owner>/<repo>/pull/<pr-number>` and `<N>` is the count of inline comments actually posted (after subtracting any that failed to anchor in step 4).
 
 6. **Parse the user's reply** in two parts:
 
-   - **First non-empty line** = event keyword. Match case-insensitively; accept obvious variants (e.g. `request changes` for `request_changes`, `no` for `n`):
-     - `n`, `no`, or empty reply → exit cleanly. The pending review remains on GitHub for manual editing or submission later.
-     - `comment` → event = `COMMENT`
-     - `request_changes` → event = `REQUEST_CHANGES`
-     - `approve` → event = `APPROVE`
-     - Anything else → echo what was received and re-ask:
+   - **First non-empty line** = event signal. Match case-insensitively, trimmed; **first match wins** — apply the rules in this order:
+     1. **Cancel** — first line is empty or one of: `n`, `no`, `nope`, `cancel`. → exit cleanly. The pending review remains on GitHub for manual editing or submission later.
+     2. **APPROVE** — first line contains any of: `approve`, `lgtm`, `ship it`, `looks good`, `good to go`. → event = `APPROVE`.
+     3. **COMMENT** — first line is exactly one of: `comment`, `comments`, `comment only`. → event = `COMMENT`. (Exact-match, not `contains` — too easy for "submit a comment" or "approve, just one comment on line 4" to false-match otherwise.)
+     4. **REQUEST_CHANGES** — first line contains any of: `submit`, `send`, `post`, `request changes`, `request_changes`, `go ahead`. → event = `REQUEST_CHANGES`.
+     5. **Anything else** — echo what was received (truncate to ~60 chars if longer) and re-ask:
 
-       ```
-       Got "<first line>", which is not n/comment/request_changes/approve. Try again.
-       Submit? (n / comment / request_changes / approve, optionally followed by a summary body on later lines)
-       ```
+        ```
+        Got "<first line>", which I can't read as cancel/approve/comment/submit. Try again with one of:
+          n          — don't submit
+          submit     — submit as REQUEST_CHANGES (also "request changes", "send", "post")
+          approve    — submit as APPROVE (also "lgtm", "ship it", "looks good")
+          comment    — submit as COMMENT
+        ```
+
+     Order matters: the approve check runs before request_changes, so "approve and submit" → APPROVE. The cancel match is exact (line is one of `n` / `no` / `nope` / `cancel` after trim), so a sloppy "no, send it" falls through to rule 4 and submits. If the user means cancel, they should type just `n` or `no`.
 
    - **Everything after the first line** = summary body, verbatim (preserves newlines and blank lines). If the reply is just the keyword line, the body is empty. The orchestrator does NOT synthesize a summary for `/review-discussion` (this differs from `/review`, which composes a structured summary).
 
@@ -515,7 +522,7 @@ These constraints are non-negotiable. Re-read them before each step:
 
 - **No eligibility checks. No delta logic.** The user's question is the contract, not the PR state. Closed/merged/draft/already-reviewed-by-self all proceed.
 - **Default model is `inherit`** (omit the `model` parameter on the answering `Agent` call). Only override on explicit `--model opus`/`--model sonnet`/`--model haiku` in `$ARGUMENTS`. Do not pass the literal string `inherit` — the Agent tool does not accept that value.
-- **Never auto-submit a pending review** — even when the user pre-emptively asks in the question (e.g. "draft a pending review for what you find" or "submit it"). Always stop at the "Submit?" prompt and wait for an explicit event keyword (`comment`, `request_changes`, or `approve`) from the user. **Stop. Do not submit.**
+- **Never auto-submit a pending review.** Even when the user pre-emptively asks in the question (e.g. "draft a pending review for what you find" or "submit it"), the model must always stop at the "Submit?" prompt and wait for the user's reply. Step 6 defines what counts as a valid reply — loose phrasing is fine, but the reply must come from the user *post-prompt*, not be inferred from the original question. **Stop. Do not submit.**
 - **Never anchor an inline comment to a line outside the diff loaded in step 5.** The answering agent was told to keep `suggested_findings` inside the loaded scope; the orchestrator must enforce this when posting. Drop any finding whose anchor falls outside.
 - **The planner is just a planner.** It picks scope; it does NOT answer the question. The answering agent is what produces the prose answer.
 - **Use the bundled `gh-pr-review` skill semantics for any pending-review actions.** Do not re-document the CLI flags inline; lean on the skill. Review IDs are `PRR_…`; thread IDs are `PRRT_…`; comment node IDs are `PRRC_…`.
