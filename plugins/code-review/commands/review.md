@@ -316,11 +316,11 @@ For each section bundle from step 5 (or the single default bundle in degraded mo
      ```
      - `message` is imperative and short. For simple fixes (rename, flip a condition,
        remove an unused arg, reorder two lines), the message alone should be enough;
-       the body just adds a one-line why.
+       the body just adds a one-line why — do not leave it empty.
 
      - `evidence` is the body of the comment. Lead with WHY in 1–3 short sentences,
        grounded inline in the rule or code reference (e.g. "matches `path:Lx-Ly`
-       precedent", "violates the <section> rule X"). For complex fixes, include
+       precedent", "violates the <section-slug> rule X"). For complex fixes, include
        a fenced code block showing the concrete change.
 
      - Do not repeat the message in the body. Do not list multiple separate angles.
