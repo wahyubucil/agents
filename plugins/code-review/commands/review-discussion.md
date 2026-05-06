@@ -441,7 +441,7 @@ Parse the user's reply (case-insensitive single character; empty defaults to `n`
    ```
 
    - `<message>` line: the finding's `message` field — an imperative one-liner.
-   - Blank line, then `<evidence>` paragraph(s): the finding's `evidence` field (may contain a fenced code block — `suggestion` if it cleanly replaces the anchored lines, plain ` ```<lang> ` otherwise).
+   - Blank line, then `<evidence>` paragraph(s): the finding's `evidence` field (may contain a fenced code block — `suggestion` if it cleanly replaces the anchored lines, plain ` ```<lang> ` otherwise). **If `evidence` is empty/null, omit this paragraph and the blank line above it entirely** — the body collapses to `<message>`, the separator, and the footer.
    - Blank line, then the literal separator `---` on its own line.
    - Footer line: literally `👤 _Human review, helped by agent_`. This is fixed text — `/review-discussion` always runs as a single agent answering one question, so there are no per-section variations.
    - **If `line_end == line_start`, omit `--start-line`** (single-line comments don't take a range).
