@@ -345,16 +345,18 @@ For each section bundle from step 5 (or the single default bundle in degraded mo
      - One suggestion block per comment. GitHub only applies the first.
      ```
 
-Once all parallel `Agent` calls complete, collect every finding into a flat list. **Tag each finding with the originating section slug** (so step 12 can render the section in the comment header). Findings outside that schema are ignored.
+Once all parallel `Agent` calls complete, collect every finding into a flat list. **Tag each finding with the originating section slug** (the merge step uses this to build the merged finding's `contributing_sections` list, which the posting template renders in the comment footer). Findings outside that schema are ignored.
 
 ## Merge
 
 Walk the flat finding list and group findings whose `(path, line_start, line_end)` overlap within ±2 lines on either edge. For each group:
 
 - Keep the **highest-confidence** finding as the canonical one.
-- **Preserve evidence from both** in the canonical finding's `evidence` field — concatenate, separated by ` | ` so the eventual inline comment shows reasoning from every contributing section.
+- **Build a `contributing_sections` list** on the canonical finding: an ordered, deduplicated list starting with the canonical finding's section slug, followed by each other contributor's section slug in confidence-descending order. The posting template renders this list in the comment footer (e.g. `bugs · security`).
+- **Concatenate evidence with `\n\n`** (a blank line between paragraphs), in confidence-descending order. Inline ` | ` joins read awkwardly when evidence contains multi-sentence prose or fenced code blocks; double-newline joins read like consecutive paragraphs.
+- **One code block per merged comment.** GitHub renders only the first `suggestion` block, and stacking plain code blocks from different sections is noisy. Rule: if two or more contributing findings each include a fenced code block (any language, including `suggestion`), keep the canonical finding's evidence verbatim; from non-canonical contributors, **strip every fenced code block before concatenation** (delete the entire ` ```...``` ` span) but keep the surrounding prose. The canonical entry's code block survives intact.
 
-This collapses cross-section duplicates (e.g. `bugs` and `security` both flagging a missing null check on the same line). Do not lose evidence — keep all of it on the survivor.
+This collapses cross-section duplicates (e.g. `bugs` and `security` both flagging a missing null check on the same line). Do not lose prose evidence — every contributor's reasoning still reaches the merged comment.
 
 ## Filter
 
