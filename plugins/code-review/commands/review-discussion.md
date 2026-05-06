@@ -424,17 +424,20 @@ Parse the user's reply (case-insensitive single character; empty defaults to `n`
      --line <line_end> \
      --start-line <line_start> \
      --body "$(cat <<EOF
-   [discussion · confidence <N>] <message>
+   <message>
 
    <evidence>
+
+   ---
+   👤 _Human review, helped by agent_
    EOF
    )"
    ```
 
-   - Header line is literally `[discussion · confidence <N>] <message>` (the section is always `discussion` here — there are no parallel section agents).
-   - `<N>` is the finding's `confidence`.
-   - `<message>` is the finding's `message`.
-   - `<evidence>` is the finding's `evidence`.
+   - `<message>` line: the finding's `message` field — an imperative one-liner.
+   - Blank line, then `<evidence>` paragraph(s): the finding's `evidence` field (may contain a fenced code block — `suggestion` if it cleanly replaces the anchored lines, plain ` ```<lang> ` otherwise).
+   - Blank line, then the literal separator `---` on its own line.
+   - Footer line: literally `👤 _Human review, helped by agent_`. This is fixed text — `/review-discussion` always runs as a single agent answering one question, so there are no per-section variations.
    - **If `line_end == line_start`, omit `--start-line`** (single-line comments don't take a range).
    - Anchors must be inside the diff loaded in step 5. The answering agent was instructed to keep them in range; if a single anchor still fails, log `failed to anchor: <path>:<start>-<end>` and continue with the next finding (do not abort the whole posting flow on a single anchor failure).
 
