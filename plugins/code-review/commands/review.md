@@ -487,38 +487,37 @@ Submit when ready:
 
 <summary body draft>
 
-Submit now? (y/n)
+Submit? Reply with one of:
+  n                                    — don't submit (review stays pending on GitHub)
+  comment / request_changes / approve  — submit with the draft summary above as the body
 ```
 
 Where `<pr-url>` is `https://github.com/<owner>/<repo>/pull/<pr-number>` and `<summary body draft>` is the full Markdown summary you composed in step 13 (rendered as-is, not in a fenced block — the user is going to copy-paste it into the `--body` argument).
 
-Parse the user's reply (case-insensitive single character; empty defaults to `n`):
+Parse the user's reply (case-insensitive, trim whitespace; accept obvious variants like `request changes` for `request_changes` and `no` for `n`):
 
-- `n` (or empty): exit cleanly. The pending review remains visible on GitHub for manual editing or submission later.
-- `y`: ask EXACTLY:
-
-  ```
-  Event? (COMMENT/REQUEST_CHANGES/APPROVE)
-  ```
-
-  Validate the reply against the three options (case-insensitive). On invalid input, echo what was received and re-ask:
+- `n`, `no`, or empty → exit cleanly. The pending review remains visible on GitHub for manual editing or submission later.
+- `comment` → event = `COMMENT`
+- `request_changes` → event = `REQUEST_CHANGES`
+- `approve` → event = `APPROVE`
+- Anything else → echo what was received and re-ask:
 
   ```
-  Got "<received>", which is not COMMENT/REQUEST_CHANGES/APPROVE. Try again.
-  Event? (COMMENT/REQUEST_CHANGES/APPROVE)
+  Got "<received>", which is not n/comment/request_changes/approve. Try again.
+  Submit? (n / comment / request_changes / approve)
   ```
 
-  Once a valid event is captured, run:
+When a valid event is captured, run:
 
-  ```bash
-  gh pr-review review --submit \
-    --review-id <review-id> \
-    --pr <pr-number> -R <owner>/<repo> \
-    --event <chosen-event> \
-    --body "<summary body draft>"
-  ```
+```bash
+gh pr-review review --submit \
+  --review-id <review-id> \
+  --pr <pr-number> -R <owner>/<repo> \
+  --event <chosen-event> \
+  --body "<summary body draft>"
+```
 
-  Surface the result. If submission fails, print the error and keep the pending review (the user can submit manually).
+Surface the result. If submission fails, print the error and keep the pending review (the user can submit manually).
 
 After this step the run is complete. Do not loop, do not re-spawn agents.
 
@@ -526,7 +525,7 @@ After this step the run is complete. Do not loop, do not re-spawn agents.
 
 These constraints are non-negotiable. Re-read them before each step:
 
-- **Never auto-submit.** Always stop at "Submit now" (step 14). The pending review must be visible on GitHub before the user has a chance to approve submission. The only path that runs `gh pr-review review --submit` is the explicit `y` branch in step 14 with a confirmed event. **Stop. Do not submit.**
+- **Never auto-submit.** Always stop at "Submit?" (step 14). The pending review must be visible on GitHub before the user has a chance to approve submission. The only path that runs `gh pr-review review --submit` is when the user replies in step 14 with an explicit event keyword (`comment`, `request_changes`, or `approve`). **Stop. Do not submit.**
 - **Never lower the `min_confidence` threshold below the artifact's value.** The user's threshold (or 80 in degraded mode) is authoritative; do not relax it because findings are sparse.
 - **Never anchor an inline comment to a line outside the delta diff.** If a finding cites an older pre-delta line for context, mention it in the body text but anchor the comment on a line inside the delta diff. Lines outside the in-scope diff are off-limits for anchors.
 - **Never run build, typecheck, or lint.** CI handles those. The build/typecheck/lint disclaimer must appear verbatim in every section agent's prompt.

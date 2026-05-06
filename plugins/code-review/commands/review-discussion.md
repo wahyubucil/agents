@@ -451,51 +451,46 @@ Parse the user's reply (case-insensitive single character; empty defaults to `n`
        --event COMMENT|REQUEST_CHANGES|APPROVE \
        --body "<your summary>"
 
-   Submit now? (y/n)
+   Submit? Reply with the event keyword on the first line, optionally followed by a summary body on later lines:
+     n                                    — don't submit (review stays pending on GitHub)
+     comment / request_changes / approve  — submit as that event
+   Lines after the first become the summary body verbatim. Omit them for an empty body.
    ```
 
    Where `<pr-url>` is `https://github.com/<owner>/<repo>/pull/<pr-number>` and `<N>` is the count of inline comments actually posted (after subtracting any that failed to anchor in step 4).
 
-6. **Parse the user's submit reply** (case-insensitive single character; empty defaults to `n`):
+6. **Parse the user's reply** in two parts:
 
-   - `n` (or empty): exit cleanly. The pending review remains visible on GitHub for manual editing or submission later.
-   - `y`: ask EXACTLY:
+   - **First non-empty line** = event keyword. Match case-insensitively; accept obvious variants (e.g. `request changes` for `request_changes`, `no` for `n`):
+     - `n`, `no`, or empty reply → exit cleanly. The pending review remains on GitHub for manual editing or submission later.
+     - `comment` → event = `COMMENT`
+     - `request_changes` → event = `REQUEST_CHANGES`
+     - `approve` → event = `APPROVE`
+     - Anything else → echo what was received and re-ask:
 
-     ```
-     Event? (COMMENT/REQUEST_CHANGES/APPROVE)
-     ```
+       ```
+       Got "<first line>", which is not n/comment/request_changes/approve. Try again.
+       Submit? (n / comment / request_changes / approve, optionally followed by a summary body on later lines)
+       ```
 
-     Validate the reply against the three options (case-insensitive). On invalid input, echo what was received and re-ask:
+   - **Everything after the first line** = summary body, verbatim (preserves newlines and blank lines). If the reply is just the keyword line, the body is empty. The orchestrator does NOT synthesize a summary for `/review-discussion` (this differs from `/review`, which composes a structured summary).
 
-     ```
-     Got "<received>", which is not COMMENT/REQUEST_CHANGES/APPROVE. Try again.
-     Event? (COMMENT/REQUEST_CHANGES/APPROVE)
-     ```
+   With the event and body captured, submit:
 
-     Once a valid event is captured, **prompt the user for the summary body** before submitting:
+   ```bash
+   gh pr-review review --submit \
+     --review-id <review-id> \
+     --pr <pr-number> -R <owner>/<repo> \
+     --event <chosen-event> \
+     --body "$(cat <<'EOF'
+   <captured summary verbatim>
+   EOF
+   )"
+   ```
 
-     ```
-     Summary body (optional, press enter to skip):
-     ```
+   If the captured body is empty, substitute `--body ""` directly (skip the heredoc).
 
-     Capture the multi-line input until the user submits. If empty, pass `--body ""` to the submit command. Otherwise, pass the captured text via heredoc to preserve newlines. The orchestrator does NOT synthesize a summary for `/review-discussion` (this differs from `/review`, which composes a structured summary).
-
-     With the event and summary body captured, run:
-
-     ```bash
-     gh pr-review review --submit \
-       --review-id <review-id> \
-       --pr <pr-number> -R <owner>/<repo> \
-       --event <chosen-event> \
-       --body "$(cat <<'EOF'
-     <captured summary verbatim, or empty>
-     EOF
-     )"
-     ```
-
-     If the captured summary is empty, substitute `--body ""` directly (skip the heredoc).
-
-     Surface the result. If submission fails, print the error verbatim and keep the pending review (the user can submit manually).
+   Surface the result. If submission fails, print the error verbatim and keep the pending review (the user can submit manually).
 
 After this step the run is complete. Do not loop.
 
@@ -514,7 +509,7 @@ These constraints are non-negotiable. Re-read them before each step:
 
 - **No eligibility checks. No delta logic.** The user's question is the contract, not the PR state. Closed/merged/draft/already-reviewed-by-self all proceed.
 - **Default model is `inherit`** (omit the `model` parameter on the answering `Agent` call). Only override on explicit `--model opus`/`--model sonnet`/`--model haiku` in `$ARGUMENTS`. Do not pass the literal string `inherit` — the Agent tool does not accept that value.
-- **Never auto-submit a pending review** — even when the user pre-emptively asks in the question (e.g. "draft a pending review for what you find" or "submit it"). Always stop at the "Submit now?" prompt and wait for an explicit `y` plus a chosen event. **Stop. Do not submit.**
+- **Never auto-submit a pending review** — even when the user pre-emptively asks in the question (e.g. "draft a pending review for what you find" or "submit it"). Always stop at the "Submit?" prompt and wait for an explicit event keyword (`comment`, `request_changes`, or `approve`) from the user. **Stop. Do not submit.**
 - **Never anchor an inline comment to a line outside the diff loaded in step 5.** The answering agent was told to keep `suggested_findings` inside the loaded scope; the orchestrator must enforce this when posting. Drop any finding whose anchor falls outside.
 - **The planner is just a planner.** It picks scope; it does NOT answer the question. The answering agent is what produces the prose answer.
 - **Use the bundled `gh-pr-review` skill semantics for any pending-review actions.** Do not re-document the CLI flags inline; lean on the skill. Review IDs are `PRR_…`; thread IDs are `PRRT_…`; comment node IDs are `PRRC_…`.
