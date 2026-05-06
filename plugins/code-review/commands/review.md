@@ -432,7 +432,7 @@ EOF
 
 - `<message>` line: the finding's `message` field — an imperative one-liner.
 - Blank line.
-- `<evidence>` paragraph(s): the merged evidence string from step 8 (paragraphs joined by blank lines; may include a fenced code block — `suggestion` if it cleanly replaces the anchored lines, plain ` ```<lang> ` otherwise).
+- `<evidence>` paragraph(s): the merged evidence string from step 8 (paragraphs joined by blank lines; may include a fenced code block — `suggestion` if it cleanly replaces the anchored lines, plain ` ```<lang> ` otherwise). **If `evidence` is empty/null, omit this paragraph and the blank line above it entirely** — the body collapses to `<message>`, the separator, and the footer.
 - Blank line, then the literal separator `---` on its own line.
 - Footer line: `🤖 _Agent review — <sections>_` where `<sections>` is the merged finding's `contributing_sections` list joined with ` · ` (space–middle-dot–space). Slugs render verbatim — lowercase, underscores intact, no title-casing. For a single-section finding this is just the one slug (e.g. `🤖 _Agent review — bugs_`).
 
