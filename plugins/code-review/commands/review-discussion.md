@@ -233,6 +233,24 @@ Spawn a **single sequential** `Agent` tool call:
   - **otherwise omit the `model` parameter entirely** so the answering agent inherits from the parent. (The Agent tool inherits the parent's model when the parameter is absent — this is the default behavior for `/review-discussion`.)
 - `prompt:` includes, in this order:
 
+  **Scope preamble (verbatim, paste this at the very top of the sub-agent's prompt — before block 1):**
+
+  ```
+  # Your scope
+
+  You are an ANSWERING sub-agent for a single PR question. Produce a prose answer; if the answer surfaces concrete actionable issues, append a `### Suggested findings` YAML block at the very bottom. The parent orchestrator decides whether to draft a pending review and does the posting; you do not.
+
+  Hard prohibitions — non-negotiable:
+  - DO NOT run any `gh pr-review` command — no `--start`, no `--add-comment`, no `--submit`.
+  - DO NOT call `gh api` with a mutating verb (no `-X POST|PUT|PATCH|DELETE`, no `--method POST|PUT|PATCH|DELETE`). Read-only `gh api` / `gh pr` / `git` lookups for grounding are fine, as are `WebFetch`, `WebSearch`, `Read`, `Grep`, and authenticated MCP tools.
+  - DO NOT use the `Agent` tool. You are a leaf node; do not dispatch sub-agents.
+  - DO NOT edit files, push commits, run builds, or run lint.
+
+  The comment-style rules later in this prompt describe how `suggested_findings` entries will render after the orchestrator posts them. They are documentation, not instructions for you to post. Emit prose plus the optional YAML block; do not act.
+  ```
+
+  Then, in this exact order:
+
   1. **The question text** (with `--model X` stripped).
 
   2. **PR context:**
@@ -525,6 +543,7 @@ These constraints are non-negotiable. Re-read them before each step:
 - **Never auto-submit a pending review.** Even when the user pre-emptively asks in the question (e.g. "draft a pending review for what you find" or "submit it"), the model must always stop at the "Submit?" prompt and wait for the user's reply. Step 6 defines what counts as a valid reply — loose phrasing is fine, but the reply must come from the user *post-prompt*, not be inferred from the original question. **Stop. Do not submit.**
 - **Never anchor an inline comment to a line outside the diff loaded in step 5.** The answering agent was told to keep `suggested_findings` inside the loaded scope; the orchestrator must enforce this when posting. Drop any finding whose anchor falls outside.
 - **The planner is just a planner.** It picks scope; it does NOT answer the question. The answering agent is what produces the prose answer.
+- **The answering sub-agent is read-only.** The step-6 prompt must start with the Scope preamble defined in that step (no `gh pr-review`, no mutating `gh api`, no `Agent` dispatch, no file edits). The agent produces prose plus an optional `### Suggested findings` block; the orchestrator (and only the orchestrator) opens, populates, or submits a pending review.
 - **Use the bundled `gh-pr-review` skill semantics for any pending-review actions.** Do not re-document the CLI flags inline; lean on the skill. Review IDs are `PRR_…`; thread IDs are `PRRT_…`; comment node IDs are `PRRC_…`.
 - **If the artifact is missing, do not block the answer.** Proceed in degraded mode with the warning. Artifact absence is an annotation on the answer's grounding, not a stopping condition.
 - **Tool scope (orchestrator vs sub-agent).** The `allowed-tools` list in this command's frontmatter restricts what the **orchestrator** (this prompt) can call directly: `Bash` (scoped to `gh pr-review:*`, `gh pr:*`, `gh api:*`, `gh repo:*`, `git:*`), `Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `Agent`. The orchestrator must not request anything else. The **answering sub-agent** dispatched via the `Agent` tool in step 6 inherits the session's full tool set — including MCP tools authenticated for the session. This is intentional: the answering agent may need MCP tools the orchestrator doesn't, and step 6's prompt explicitly invites it to call them. **Do not add MCP tool entries to `allowed-tools`;** they're available to sub-agents through inheritance, not through this list.

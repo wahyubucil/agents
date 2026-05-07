@@ -225,6 +225,24 @@ For each section bundle from step 5 (or the single default bundle in degraded mo
   - if the bundle's `model` is `inherit`, **omit the `model` parameter entirely** (the Agent tool inherits the parent model when the parameter is absent — `inherit` is **not** a literal value the tool accepts).
 - `prompt:` must include all of the following, in this order:
 
+  **Scope preamble (verbatim, paste this at the very top of the sub-agent's prompt — before block 1).** Substitute `<section-slug>` with the bundle's slug (e.g. `bugs`, `security`, `conventions`) before pasting:
+
+  ```
+  # Your scope
+
+  You are an ANALYSIS-ONLY sub-agent for one section ("<section-slug>") of a project-aware code review. Your only job is to read the diff, apply the rules below, and return a single YAML `findings:` block. The parent orchestrator merges, filters, and posts; you do not.
+
+  Hard prohibitions — non-negotiable:
+  - DO NOT run any `gh pr-review` command — no `--start`, no `--add-comment`, no `--submit`.
+  - DO NOT call `gh api` with a mutating verb (no `-X POST|PUT|PATCH|DELETE`, no `--method POST|PUT|PATCH|DELETE`). Read-only `gh api` lookups for grounding are fine.
+  - DO NOT use the `Agent` tool. You are a leaf node; do not dispatch sub-agents.
+  - DO NOT edit files, push commits, run builds, or run lint.
+
+  The comment-style rules later in this prompt describe how findings will render after the orchestrator posts them. They are documentation, not instructions for you to post. Emit YAML; do not act.
+  ```
+
+  Then, the per-section blocks in this exact order:
+
   1. **Section heading and body rules** — the user's project rules for this section. Format:
 
      ```
@@ -546,5 +564,6 @@ These constraints are non-negotiable. Re-read them before each step:
 - **Re-check eligibility before posting.** The post-eligibility sub-agent (step 10) is the race guard against the PR being closed/merged/drafted mid-review. Without it, you can leak comments onto a PR that no longer accepts them.
 - **Use the bundled `gh-pr-review` skill semantics.** Review IDs are `PRR_…`; thread IDs are `PRRT_…`. Do not re-document the CLI flags inline; lean on the skill.
 - **Issue parallel section-agent dispatches in a single response message.** All `Agent` tool calls for step 7 must be batched together so they run concurrently. Sequential dispatch is wrong.
+- **Section sub-agents are analysis-only.** Every section-agent prompt in step 7 must start with the Scope preamble defined in that step (no `gh pr-review`, no mutating `gh api`, no `Agent` dispatch, no file edits). Sub-agents inherit the orchestrator's tool scope by default — without an explicit boundary in their prompt, a smart agent may run the full pipeline itself and post un-vetted comments instead of returning YAML.
 - **For `model: inherit` sections, omit the Agent tool's model parameter.** Do not pass `inherit` as a literal — the tool does not accept that string. Omit the model parameter entirely and the tool inherits from the parent.
 - **Use only the declared tools:** `Bash` (scoped to `gh pr-review:*`, `gh pr:*`, `gh api:*`, `gh repo:*`, `git:*`), `Read`, `Glob`, `Grep`, `Agent`. Do not request anything else.
