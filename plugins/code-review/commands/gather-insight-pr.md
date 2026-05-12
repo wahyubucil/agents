@@ -138,18 +138,20 @@ For each `Agent` call:
 - `description`: `Extract rule from PR comment`
 - `prompt`: include all of the following:
   - The full comment `body`.
-  - The comment's `path`, `line`, `author_login`, and PR number `<pr-number>` (for the evidence string).
-  - A flag indicating whether the comment is an inline thread comment or a review summary. If it is a review summary, instruct the agent to use `path: none` and `line: 0` in the evidence and to note in the evidence that it is a review summary, not an inline thread.
+  - The comment's `path`, `line`, and PR number `<pr-number>` (for the evidence string). The `author_login` is **not** used in evidence — it is intentionally omitted to keep the source line minimal.
+  - A flag indicating whether the comment is an inline thread comment or a review summary. If it is a review summary, the evidence string omits the path/line entirely and is just `PR #<n> (review summary)`.
   - The full list of artifact section slugs from the frontmatter (the seven defaults plus any custom sections). The agent must pick its `suggested_section` from this list — no inventing slugs.
   - The instruction to output exactly this YAML schema:
 
     ```yaml
     rule: <one-line imperative sentence>
     why: <one sentence rationale>
-    evidence: "Reviewer @<login> on <path>:<line> in PR #<n>"
+    evidence: "PR #<n>, <basename>:<line>"   # or "PR #<n> (review summary)" for review-summary comments
     suggested_section: <slug from the available list>
     generalizability: <0-100 integer>
     ```
+
+    `<basename>` is the filename portion of `path` only (e.g. `path: app/src/main/java/co/foo/HotwordService.kt`, `line: 209` → `HotwordService.kt:209`). The full path is dropped to keep the source line short — the PR number plus filename is enough to locate the comment if anyone needs to audit it later.
 
   - The generalizability rubric:
     - 0-20: hyper-specific (e.g. "rename `foo` to `bar` here", "fix this typo on line 12").
@@ -260,7 +262,7 @@ For each rule in the combined `new` + `refines-existing` list, in the order they
 
      Parse the reply as a single digit `1-3`; this prompt has no default — re-prompt with `Enter a number 1-3.` followed by the same options block on empty or invalid input.
 
-     The auto-generated `evidence` string (`Reviewer @<login> on <path>:<line> in PR #<n>`) is **not** editable here — it is the audit trail provenance and rewriting it would falsify the source attribution and break parsing. If the user wants to add their own context (e.g. a snippet of the reviewer's comment), they can edit the artifact directly afterward.
+     The auto-generated `evidence` string (`PR #<n>, <basename>:<line>`, or `PR #<n> (review summary)` for review-summary comments) is **not** editable here — it is the audit trail provenance and rewriting it would falsify the source attribution and break parsing. If the user wants to add their own context (e.g. a snippet of the reviewer's comment or the reviewer's handle), they can edit the artifact directly afterward.
 
      Re-prompt for the chosen field(s), update the in-memory state, then re-render the rule block and re-ask `(y)es / (e)dit / (n)o`. Loop until the user picks `y` or `n`.
    - `n` (no): skip this rule. Do not write anything.
@@ -293,17 +295,19 @@ Use the canonical rule format:
   - **Source:** <evidence>
 ```
 
-The `**Source:**` sub-bullet is built from the rule's `evidence` field. Format it as:
+The `**Source:**` sub-bullet is the rule's `evidence` field with the literal `Source: ` prefix. For inline thread comments:
 
 ```
-**Source:** Reviewer @<login> on <path>:<line> in PR #<n> — "<short snippet of the comment if it adds context>"
+**Source:** PR #<n>, <basename>:<line>
 ```
 
-Optionally include a short snippet (one sentence at most) of the original comment body if it materially clarifies the rule. If the snippet would just restate the rule, omit it and use only the evidence string. For comments that are entire review-summary bodies (top-level rather than inline), use `path:none, line:0` in the evidence and note it is a review summary, not an inline thread:
+For review-summary comments (top-level rather than inline), the evidence omits the path/line:
 
 ```
-**Source:** Reviewer @<login> review summary on PR #<n>: "<short snippet>"
+**Source:** PR #<n> (review summary)
 ```
+
+Do **not** append the reviewer login or a snippet of the comment body — keep the source line minimal. The Why sub-bullet already carries the rationale; the Source line is just an audit-trail pointer for later curation. Anyone who wants the original comment text or the reviewer handle can open the PR. This trim keeps the artifact compact when many rules accumulate over time.
 
 **Preserve placeholder comments in all sections you are not modifying.** Only the section a new rule lands in loses its placeholder (and only if the section had nothing else). Never strip placeholders from sections that received no new rules in this run.
 
