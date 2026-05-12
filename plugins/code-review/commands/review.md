@@ -388,7 +388,26 @@ Drop every merged finding whose `confidence` is **strictly less than** `min_conf
 
 **Never lower the threshold below the artifact's `min_confidence` value.** This is a hard rule; the user's threshold is authoritative.
 
-If 0 findings remain after filtering: still proceed with steps 11-14. Open the pending review, add no inline comments, and write a summary body that states `Reviewed sections: ...; no high-confidence findings.` This gives the user a posting trace and lets them submit/discard the empty review on GitHub. The Submit-now? prompt remains.
+**If 0 findings remain after filtering: stop here.** Do not run steps 10–14 — no post-eligibility check, no pending review, no inline comments, no submit prompt. An empty pending review on GitHub is noise the user has to discard manually, and there is nothing to submit. Instead, print this terminal-only summary and exit cleanly:
+
+```
+Reviewed sections: <comma-separated section slugs that ran>.
+Findings: 0 at confidence ≥ <threshold> (from <total_candidates> raw).
+
+No pending review created — nothing to post.
+```
+
+If `<total_candidates> > 0` (the confidence filter is what dropped everything), append a blank line and then a bullet list of the filtered findings ordered by confidence descending:
+
+```
+Filtered (below threshold):
+- <section>: <message> (<confidence>)
+- …
+```
+
+Where `<section>` is the merged finding's `contributing_sections` joined with ` · ` (single slug if only one), `<message>` is the finding's `message` field verbatim, and `<confidence>` is the integer score. If `<total_candidates> == 0` (sections found nothing at all), omit the bullet list entirely.
+
+For degraded mode, `<comma-separated section slugs that ran>` is `default (no artifact)` — same wording the regular summary uses (see step 13).
 
 ## Post-eligibility
 
